@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home Screen · Metro + Weather</title>
+    <link rel="stylesheet" href="../assets/main.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <a href="../" class="logo">
+          <span class="logo-badge">KL</span>
+          <span>Tilbake</span>
+        </a>
+        <div id="fetch-status" class="status-pill loading">
+          <span class="dot"></span>
+          <span>Henter</span>
+        </div>
+      </header>
+
+      <div class="hero-clock">
+        <div class="time" id="clock-time">--:--</div>
+        <div class="date" id="clock-date">
+          <span>laster dato</span>
+        </div>
+      </div>
+
+      <div class="dashboard">
+        <section class="departures-card">
+          <div class="panel-title">🚇 Løren T-bane</div>
+          <div class="badge">Spor 1</div>
+          <div id="loren-east" class="departures-list"></div>
+          <div class="badge" style="margin-top: 12px">Spor 2</div>
+          <div id="loren-west" class="departures-list"></div>
+        </section>
+
+        <section class="departures-card">
+          <div class="panel-title">🚇 Sinsen T-bane</div>
+          <div class="badge">Spor 2</div>
+          <div id="sinsen-list" class="departures-list"></div>
+        </section>
+
+        <section class="weather-card">
+          <div class="panel-title">🌤️ Været i Oslo</div>
+          <div class="badge">Ut dagen</div>
+          <div id="weather-grid" class="weather-grid" style="margin-top: 12px"></div>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      const STOP_IDS = {
+        loren: 'NSR:StopPlace:63284',
+        sinsen: 'NSR:StopPlace:61268',
+      };
+
+      const formatTime = (dateStr) => {
+        const date = new Date(dateStr);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      };
+
+      const withinNextHour = (dateStr) => {
+        const t = new Date(dateStr).getTime();
+        const now = Date.now();
+        const hour = 60 * 60 * 1000;
+        return t >= now && t <= now + hour;
+      };
+
+      const addMinutesIso = (dateStr, minutes) => {
+        const d = new Date(dateStr);
+        d.setMinutes(d.getMinutes() + minutes);
+        return d.toISOString();
+      };
+
+      const FALLBACK_DEPARTURES = {
+        lorenEast: [
+          {
+            line: '4',
+            destination: 'Vestli',
+            platform: '1',
+            time: '13:47',
+            delayMinutes: 3,
+          },
+          {
+            line: '5',
+            destination: 'Sognsvann',
+            platform: '1',
+            time: '14:00',
+            delayMinutes: 0,
+          },
+        ],
+        lorenWest: [
+          { line: '4', destination: 'Bergkrystallen', platform: '2', time: '13:41', delayMinutes: 2 },
+          { line: '5', destination: 'Ringen', platform: '2', time: '13:54', delayMinutes: 1 },
+        ],
+        sinsen: [
+          { line: '5', destination: 'Sognsvann', platform: '2', time: '13:52', delayMinutes: 0 },
+          { line: '5', destination: 'Sognsvann', platform: '2', time: '14:10', delayMinutes: 0 },
+        ],
+      };
+
+      const FALLBACK_WEATHER = [
+        { label: '13:00', temp: -1, icon: '☁️', precip: 0.0 },
+        { label: '14:00', temp: 0, icon: '☁️', precip: 0.0 },
+        { label: '15:00', temp: 0, icon: '☁️', precip: 0.0 },
+        { label: '16:00', temp: -1, icon: '☁️', precip: 0.0 },
+        { label: '17:00', temp: -1, icon: '☁️', precip: 0.0 },
+        { label: '18:00', temp: -1, icon: '☁️', precip: 0.0 },
+      ];
+
+      const diffMinutes = (expected, aimed) => {
+        const e = new Date(expected).getTime();
+        const a = new Date(aimed).getTime();
+        return Math.round((e - a) / 60000);
+      };
+
+      const delayLabel = (delta) => {
+        if (delta <= 0) return { text: 'i rute', cls: 'ok' };
+        if (delta <= 2) return { text: `+${delta} min`, cls: 'warn' };
+        return { text: `+${delta} min`, cls: 'bad' };
+      };
+
+      const setStatus = (state, label) => {
+        const el = document.getElementById('fetch-status');
+        if (!el) return;
+        el.classList.remove('live', 'error', 'loading');
+        el.classList.add(state);
+        el.querySelector('span:nth-child(2)').textContent = label;
+      };
+
+      const fetchDepartures = async (stopId, limit = 40) => {
+        const query = `
+          {
+            stopPlace(id: "${stopId}") {
+              name
+              estimatedCalls(numberOfDepartures: ${limit}) {
+                expectedDepartureTime
+                aimedDepartureTime
+                destinationDisplay { frontText }
+                quay { publicCode }
+                serviceJourney { journeyPattern { line { name publicCode transportMode } } }
+              }
+            }
+          }
+        `;
+
+        const res = await fetch('https://api.entur.io/journey-planner/v3/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'ET-Client-Name': 'kl-home-screen',
+            'User-Agent': 'kl-home-screen',
+          },
+          body: JSON.stringify({ query }),
+        });
+
+        if (!res.ok) throw new Error('Ruter API error');
+        const json = await res.json();
+        return json.data?.stopPlace?.estimatedCalls ?? [];
+      };
+
+      const renderDepartures = (containerId, rows, noticeText) => {
+        const el = document.getElementById(containerId);
+        el.innerHTML = '';
+        if (!rows.length) {
+          el.innerHTML = `<div class="badge">${noticeText || 'Ingen avganger akkurat nå'}</div>`;
+          return;
+        }
+
+        if (noticeText) {
+          const note = document.createElement('div');
+          note.className = 'badge';
+          note.style.marginBottom = '8px';
+          note.textContent = noticeText;
+          el.appendChild(note);
+        }
+
+        rows.forEach((item) => {
+          const delay = delayLabel(item.delayMinutes);
+          const row = document.createElement('div');
+          row.className = 'departure-card';
+          row.innerHTML = `
+            <div class="line-pill">${item.line}</div>
+            <div class="departure-main">
+              <div class="destination">${item.destination}</div>
+              <div class="platform">Spor ${item.platform || '–'}</div>
+              ${
+                item.sinsenArrival
+                  ? `<div class="platform" style="color: var(--success)">Ankommer Sinsen ca ${item.sinsenArrival}</div>`
+                  : ''
+              }
+            </div>
+            <div class="time-col">
+              <div class="departure-time">${item.time}</div>
+              <div class="delay ${delay.cls}">${delay.text}</div>
+            </div>
+          `;
+          el.appendChild(row);
+        });
+      };
+
+      const loadDepartures = async () => {
+        try {
+          setStatus('loading', 'Oppdaterer…');
+          const loren = await fetchDepartures(STOP_IDS.loren);
+          // Sinsen gets a higher pull to ensure track-2 metros aren’t pushed out by buses
+          const sinsen = await fetchDepartures(STOP_IDS.sinsen, 80);
+
+          const mapCalls = (calls, filterFn) => {
+            const base = calls.filter(filterFn).map((call) => {
+              const line = call.serviceJourney?.journeyPattern?.line;
+              return {
+                line: line?.publicCode || '?',
+                destination: call.destinationDisplay?.frontText || 'Ukjent',
+                platform: call.quay?.publicCode || '',
+                time: formatTime(call.expectedDepartureTime),
+                delayMinutes: diffMinutes(call.expectedDepartureTime, call.aimedDepartureTime),
+                aimed: call.aimedDepartureTime,
+                expected: call.expectedDepartureTime,
+              };
+            });
+
+            const nextHour = base.filter((c) => withinNextHour(c.expected));
+            const chosen =
+              nextHour.length > 0
+                ? nextHour
+                : base
+                    .sort((a, b) => new Date(a.aimed) - new Date(b.aimed))
+                    .slice(0, 8); // fallback to earliest if next-hour is empty
+
+            return chosen.sort((a, b) => new Date(a.aimed) - new Date(b.aimed));
+          };
+
+          const lorenRows = mapCalls(
+            loren,
+            (c) =>
+              c.serviceJourney?.journeyPattern?.line?.transportMode === 'metro' &&
+              ['1', '2', '3', '4', '5'].includes(c.serviceJourney.journeyPattern.line.publicCode)
+          );
+
+          const lorenEast = lorenRows
+            .filter((r) => r.platform === '1')
+            .map((r) =>
+              r.line === '5'
+                ? { ...r, sinsenArrival: formatTime(addMinutesIso(r.expected, 2)) }
+                : { ...r, sinsenArrival: undefined }
+            )
+            .slice(0, 4);
+          const lorenWest = lorenRows
+            .filter((r) => r.platform === '2')
+            .map((r) => ({ ...r, sinsenArrival: undefined }))
+            .slice(0, 4);
+
+          const sinsenRows = mapCalls(
+            sinsen,
+            (c) =>
+              c.serviceJourney?.journeyPattern?.line?.transportMode === 'metro' &&
+              c.serviceJourney.journeyPattern.line.publicCode === '5' &&
+              c.quay?.publicCode === '2'
+          ).slice(0, 4);
+
+          renderDepartures(
+            'loren-east',
+            lorenEast.length ? lorenEast : FALLBACK_DEPARTURES.lorenEast,
+            lorenEast.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
+          );
+          renderDepartures(
+            'loren-west',
+            lorenWest.length ? lorenWest : FALLBACK_DEPARTURES.lorenWest,
+            lorenWest.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
+          );
+          renderDepartures(
+            'sinsen-list',
+            sinsenRows.length ? sinsenRows : FALLBACK_DEPARTURES.sinsen,
+            sinsenRows.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
+          );
+          setStatus('live', 'Live');
+        } catch (err) {
+          console.error(err);
+          setStatus('error', 'Ingen sanntid');
+          renderDepartures('loren-east', FALLBACK_DEPARTURES.lorenEast, 'Fikk ikke Ruter-data – viser demo');
+          renderDepartures('loren-west', FALLBACK_DEPARTURES.lorenWest, 'Fikk ikke Ruter-data – viser demo');
+          renderDepartures('sinsen-list', FALLBACK_DEPARTURES.sinsen, 'Fikk ikke Ruter-data – viser demo');
+        }
+      };
+
+      const symbolIcon = (code) => {
+        if (!code) return '☁️';
+        if (code.includes('rain')) return '🌧️';
+        if (code.includes('snow')) return '🌨️';
+        if (code.includes('cloud')) return '☁️';
+        if (code.includes('sun') || code.includes('clearsky')) return '☀️';
+        return '☁️';
+      };
+
+      const fetchWeather = async () => {
+        const res = await fetch(
+          'https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=59.9295&lon=10.7913',
+          {
+            headers: {
+              'User-Agent': 'kl-home-screen',
+            },
+          }
+        );
+        if (!res.ok) throw new Error('Weather fetch failed');
+        const json = await res.json();
+        return json.properties?.timeseries ?? [];
+      };
+
+      const normalizeWeather = (timeseries) =>
+        timeseries.slice(0, 12).map((ts) => {
+          const date = new Date(ts.time);
+          const temp = ts.data?.instant?.details?.air_temperature;
+          const precip = ts.data?.next_1_hours?.details?.precipitation_amount ?? 0;
+          const icon = symbolIcon(ts.data?.next_1_hours?.summary?.symbol_code);
+          return {
+            label: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            temp: Math.round(temp),
+            precip: precip.toFixed(1),
+            icon,
+          };
+        });
+
+      const renderWeather = (items, noticeText) => {
+        const grid = document.getElementById('weather-grid');
+        grid.innerHTML = '';
+        if (!items.length) {
+          grid.innerHTML = `<div class="badge">${noticeText || 'Ingen værdata'}</div>`;
+          return;
+        }
+
+        if (noticeText) {
+          const note = document.createElement('div');
+          note.className = 'badge';
+          note.style.marginBottom = '8px';
+          note.textContent = noticeText;
+          grid.appendChild(note);
+        }
+
+        items.forEach((item) => {
+          const cell = document.createElement('div');
+          cell.className = 'weather-cell';
+          cell.innerHTML = `
+            <div class="weather-time">${item.label}</div>
+            <div class="weather-temp">${item.temp}°</div>
+            <div>${item.icon}</div>
+            <div class="weather-precip">${Number(item.precip).toFixed(1)} mm</div>
+          `;
+          grid.appendChild(cell);
+        });
+      };
+
+      const loadWeather = async () => {
+        try {
+          const ts = await fetchWeather();
+          const items = normalizeWeather(ts);
+          renderWeather(
+            items.length ? items : FALLBACK_WEATHER,
+            items.length ? '' : 'Viser demo-vær – ingen data'
+          );
+          setStatus('live', 'Live');
+        } catch (err) {
+          console.error(err);
+          setStatus('error', 'Ingen sanntid');
+          renderWeather(FALLBACK_WEATHER, 'Fikk ikke værdata – viser demo');
+        }
+      };
+
+      const tickClock = () => {
+        const now = new Date();
+        document.getElementById('clock-time').textContent = now.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        document.getElementById('clock-date').textContent = now.toLocaleDateString('nb-NO', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        });
+      };
+
+      tickClock();
+      setInterval(tickClock, 1000 * 30);
+      loadDepartures();
+      loadWeather();
+      setInterval(loadDepartures, 1000 * 60);
+      setInterval(loadWeather, 1000 * 60 * 10);
+    </script>
+  </body>
+</html>
