@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Home Screen · Metro + Weather</title>
+    <title>House Screen</title>
     <link rel="stylesheet" href="../assets/main.css" />
   </head>
   <body>
@@ -43,14 +43,13 @@
 
         <section class="weather-card">
           <div class="panel-title">🌤️ Været i Oslo</div>
-          <div class="badge">Ut dagen</div>
           <div id="weather-grid" class="weather-grid" style="margin-top: 12px"></div>
         </section>
       </div>
     </div>
 
-    <script>
-      const STOP_IDS = {
+      <script>
+        const STOP_IDS = {
         loren: 'NSR:StopPlace:63284',
         sinsen: 'NSR:StopPlace:61268',
       };
@@ -204,7 +203,6 @@
         try {
           setStatus('loading', 'Oppdaterer…');
           const loren = await fetchDepartures(STOP_IDS.loren);
-          // Sinsen gets a higher pull to ensure track-2 metros aren’t pushed out by buses
           const sinsen = await fetchDepartures(STOP_IDS.sinsen, 80);
 
           const mapCalls = (calls, filterFn) => {
@@ -258,7 +256,14 @@
               c.serviceJourney?.journeyPattern?.line?.transportMode === 'metro' &&
               c.serviceJourney.journeyPattern.line.publicCode === '5' &&
               c.quay?.publicCode === '2'
-          ).slice(0, 4);
+          );
+
+          const firstLorenWest = lorenWest.length ? new Date(lorenWest[0].expected).getTime() : null;
+          const sinsenFiltered =
+            firstLorenWest !== null
+              ? sinsenRows.filter((r) => new Date(r.expected).getTime() >= firstLorenWest)
+              : sinsenRows;
+          const sinsenTrimmed = sinsenFiltered.slice(0, 4);
 
           renderDepartures(
             'loren-east',
@@ -272,8 +277,8 @@
           );
           renderDepartures(
             'sinsen-list',
-            sinsenRows.length ? sinsenRows : FALLBACK_DEPARTURES.sinsen,
-            sinsenRows.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
+            sinsenTrimmed.length ? sinsenTrimmed : FALLBACK_DEPARTURES.sinsen,
+            sinsenTrimmed.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
           );
           setStatus('live', 'Live');
         } catch (err) {
@@ -308,8 +313,15 @@
         return json.properties?.timeseries ?? [];
       };
 
+      const filterUntilMidnight = (timeseries) => {
+        const now = new Date();
+        const midnight = new Date(now);
+        midnight.setHours(24, 0, 0, 0);
+        return timeseries.filter((ts) => new Date(ts.time) <= midnight);
+      };
+
       const normalizeWeather = (timeseries) =>
-        timeseries.slice(0, 12).map((ts) => {
+        filterUntilMidnight(timeseries).map((ts) => {
           const date = new Date(ts.time);
           const temp = ts.data?.instant?.details?.air_temperature;
           const precip = ts.data?.next_1_hours?.details?.precipitation_amount ?? 0;

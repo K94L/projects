@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>House Screen Simplified</title>
+    <title>House Screen Detailed</title>
     <link rel="stylesheet" href="../assets/main.css" />
   </head>
   <body>
@@ -284,7 +284,6 @@
             });
 
             const sorted = base.sort((a, b) => new Date(a.aimed) - new Date(b.aimed));
-
             const nextHour = useNextHour ? sorted.filter((c) => withinNextHour(c.expected)) : [];
             const chosen =
               useNextHour && nextHour.length > 0
