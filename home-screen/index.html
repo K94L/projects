@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>House Screen</title>
     <link rel="stylesheet" href="../assets/main.css" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
     <div class="page">
@@ -317,7 +318,11 @@
         const now = new Date();
         const midnight = new Date(now);
         midnight.setHours(24, 0, 0, 0);
-        return timeseries.filter((ts) => new Date(ts.time) <= midnight);
+        const nowMs = now.getTime();
+        return timeseries.filter((ts) => {
+          const t = new Date(ts.time).getTime();
+          return t >= nowMs && t <= midnight.getTime();
+        });
       };
 
       const normalizeWeather = (timeseries) =>

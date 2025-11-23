@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>House Screen Detailed</title>
     <link rel="stylesheet" href="../assets/main.css" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
     <div class="page">
@@ -26,7 +27,7 @@
         </div>
       </div>
 
-      <div class="dashboard">
+      <div class="dashboard stacked">
         <section class="departures-card">
           <div class="panel-title">🚇 Løren T-bane</div>
           <div id="loren-west" class="departures-list"></div>
@@ -217,7 +218,7 @@
         return json.data?.stopPlace?.estimatedCalls ?? [];
       };
 
-      const renderDepartures = (containerId, rows, noticeText) => {
+      const renderDepartures = (containerId, rows, noticeText, earliestByLabel, usedEarliest) => {
         const el = document.getElementById(containerId);
         el.innerHTML = '';
         if (!rows.length) {
@@ -236,48 +237,76 @@
         rows.forEach((item) => {
           const delay = delayLabel(item.delayMinutes);
           const row = document.createElement('div');
-          row.className = 'departure-card';
-          row.innerHTML = `
-            <div class="line-pill">${item.line}</div>
-            <div class="departure-main">
-              <div class="destination">${item.destination}</div>
-              <div class="platform">Spor ${item.platform || '–'}</div>
-              ${
-                item.sinsenArrival
-                  ? `<div class="platform" style="color: var(--success)">Ankommer Sinsen ca ${item.sinsenArrival}</div>`
-                  : ''
-              }
-              ${
-                item.walkBy
-                  ? `<div class="platform walk-deadline" data-target="${item.walkBy}">
-                      <span>Gå senest ${formatTime(item.walkBy)}</span>
-                      <span class="walk-countdown" data-target="${item.walkBy}">(${countdownLabel(item.walkBy)})</span>
-                    </div>`
-                  : ''
-              }
-              ${
-                item.arrivals && item.arrivals.length
-                  ? `<div class="platform">
-                      ${item.arrivals
-                        .map(
-                          (a) =>
-                            `${a.label}: ${formatTime(a.time)} (${a.delta} min${a.delta < 0 ? ' før' : ''})`
-                        )
-                        .join(' · ')}
-                    </div>`
-                  : ''
-              }
-            </div>
-            <div class="time-col">
-              <div class="departure-time">${item.time}</div>
-              <div class="delay ${delay.cls}">${delay.text}</div>
-              ${
-                item.catchLabel
-                  ? `<div class="catch-diff ${item.catchClass || ''}">${item.catchLabel}</div>`
-                  : ''
-              }
+          row.className = 'departure-row';
+
+          const departureCard = `
+            <div class="departure-card">
+              <div class="line-pill">${item.line}</div>
+              <div class="departure-main">
+                <div class="destination">${item.destination}</div>
+                <div class="platform">Spor ${item.platform || '–'}</div>
+                ${
+                  item.sinsenArrival
+                    ? `<div class="platform" style="color: var(--success)">Ankommer Sinsen ca ${item.sinsenArrival}</div>`
+                    : ''
+                }
+                ${
+                  item.walkBy
+                    ? `<div class="platform walk-deadline" data-target="${item.walkBy}">
+                        <span>Gå senest ${formatTime(item.walkBy)}</span>
+                        <span class="walk-countdown" data-target="${item.walkBy}">(${countdownLabel(item.walkBy)})</span>
+                      </div>`
+                    : ''
+                }
+              </div>
+              <div class="time-col">
+                <div class="departure-time">${item.time}</div>
+                <div class="delay ${delay.cls}">${delay.text}</div>
+                ${
+                  item.catchLabel
+                    ? `<div class="catch-diff ${item.catchClass || ''}">${item.catchLabel}</div>`
+                    : ''
+                }
+              </div>
             </div>
           `;
+
+          let arrivalsCards = '';
+          if (item.arrivals && item.arrivals.length) {
+            const arrivalsSlice = item.arrivals.slice(0, 3);
+            arrivalsCards = arrivalsSlice
+              .map((a) => {
+                const ms = new Date(a.time).getTime();
+                const isEarliest = earliestByLabel[a.label] === ms && !usedEarliest[a.label];
+                if (isEarliest) usedEarliest[a.label] = true;
+                return `
+                  <div class="arrival-card">
+                    <div class="arrival-station">${a.label}</div>
+                    <div class="arrival-meta">
+                      <span>Ankomst</span>
+                      <span class="arrival-time ${isEarliest ? 'earliest' : ''}">${formatTime(a.time)}</span>
+                    </div>
+                    <div class="arrival-meta">
+                      <span>Reisetid</span>
+                      <span>${a.delta} min</span>
+                    </div>
+                  </div>
+                `;
+              })
+              .join('');
+            const missing = 3 - arrivalsSlice.length;
+            if (missing > 0) {
+              arrivalsCards += '<div class="arrival-card"></div>'.repeat(missing);
+            }
+          } else {
+            arrivalsCards = `
+              <div class="arrival-card"><div class="arrival-header"><span>Ingen tider</span></div></div>
+              <div class="arrival-card"></div>
+              <div class="arrival-card"></div>
+            `;
+          }
+
+          row.innerHTML = `${departureCard}${arrivalsCards}`;
           el.appendChild(row);
         });
       };
@@ -299,16 +328,20 @@
             const startMs = new Date(startExpected).getTime();
             return importantStops
               .map((stop) => {
-                const call = serviceJourney.estimatedCalls.find(
-                  (c) => stop.ids.includes(c.quay?.stopPlace?.id) && c.expectedArrivalTime
-                );
-                if (!call) return null;
-                const arrMs = new Date(call.expectedArrivalTime).getTime();
-                if (Number.isNaN(arrMs) || arrMs < startMs) return null;
+                const candidates = serviceJourney.estimatedCalls
+                  .filter((c) => stop.ids.includes(c.quay?.stopPlace?.id) && c.expectedArrivalTime)
+                  .map((c) => ({
+                    time: c.expectedArrivalTime,
+                    ms: new Date(c.expectedArrivalTime).getTime(),
+                  }))
+                  .filter((c) => !Number.isNaN(c.ms) && c.ms >= startMs)
+                  .sort((a, b) => a.ms - b.ms);
+                if (!candidates.length) return null;
+                const chosen = candidates[0];
                 return {
                   label: stop.label,
-                  time: call.expectedArrivalTime,
-                  delta: Math.round((arrMs - startMs) / 60000),
+                  time: chosen.time,
+                  delta: Math.round((chosen.ms - startMs) / 60000),
                 };
               })
               .filter(Boolean);
@@ -422,15 +455,32 @@
 
           const sinsenAnnotated = annotateSinsen(sinsenLimited, lorenWest);
 
+          // Earliest arrivals across both Løren and Sinsen
+          const earliestByLabel = {};
+          [...lorenWest, ...sinsenAnnotated].forEach((r) => {
+            (r.arrivals || []).forEach((a) => {
+              const ms = new Date(a.time).getTime();
+              if (Number.isNaN(ms)) return;
+              if (!earliestByLabel[a.label] || ms < earliestByLabel[a.label]) {
+                earliestByLabel[a.label] = ms;
+              }
+            });
+          });
+          const usedEarliest = {};
+
           renderDepartures(
             'loren-west',
             lorenWest.length ? lorenWest : FALLBACK_DEPARTURES.lorenWest,
-            lorenWest.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
+            lorenWest.length ? '' : 'Viser demo-data – ingen sanntid i neste time',
+            earliestByLabel,
+            usedEarliest
           );
           renderDepartures(
             'sinsen-list',
             sinsenAnnotated.length ? sinsenAnnotated : FALLBACK_DEPARTURES.sinsen,
-            sinsenAnnotated.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
+            sinsenAnnotated.length ? '' : 'Viser demo-data – ingen sanntid i neste time',
+            earliestByLabel,
+            usedEarliest
           );
 
           setStatus('live', 'Live');
@@ -462,7 +512,11 @@
         const now = new Date();
         const midnight = new Date(now);
         midnight.setHours(24, 0, 0, 0);
-        return timeseries.filter((ts) => new Date(ts.time) <= midnight);
+        const nowMs = now.getTime();
+        return timeseries.filter((ts) => {
+          const t = new Date(ts.time).getTime();
+          return t >= nowMs && t <= midnight.getTime();
+        });
       };
 
       const normalizeWeather = (timeseries) =>
