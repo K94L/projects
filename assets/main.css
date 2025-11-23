@@ -356,11 +356,11 @@ p {
   grid-template-columns: auto 1fr auto;
   gap: 14px;
   align-items: center;
-  padding: 12px;
+  padding: 10px;
   border-radius: 14px;
   background: var(--panel-strong);
   border: 1px solid var(--border);
-  min-height: 110px;
+  min-height: 95px;
 }
 
 .departure-row {
@@ -378,10 +378,10 @@ p {
   background: var(--panel-strong);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 12px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   text-align: left;
   height: 100%;
   justify-content: space-evenly;

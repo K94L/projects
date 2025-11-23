@@ -53,6 +53,11 @@
 
       const formatTime = (dateStr) => {
         const date = new Date(dateStr);
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      };
+
+      const formatTimeHm = (dateStr) => {
+        const date = new Date(dateStr);
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       };
 
@@ -284,7 +289,7 @@
                     <div class="arrival-station">${a.label}</div>
                     <div class="arrival-meta">
                       <span>Ankomst</span>
-                      <span class="arrival-time ${isEarliest ? 'earliest' : ''}">${formatTime(a.time)}</span>
+                      <span class="arrival-time ${isEarliest ? 'earliest' : ''}">${formatTimeHm(a.time)}</span>
                     </div>
                     <div class="arrival-meta">
                       <span>Reisetid</span>
@@ -617,6 +622,7 @@
       setInterval(loadDepartures, 1000 * 60);
       setInterval(loadWeather, 1000 * 60 * 10);
       setInterval(updateCountdowns, 1000);
+      setInterval(loadWeather, 1000 * 60);
     </script>
   </body>
 </html>
