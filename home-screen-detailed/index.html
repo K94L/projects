@@ -183,11 +183,20 @@
             stopPlace(id: "${stopId}") {
               name
               estimatedCalls(numberOfDepartures: ${limit}) {
-                expectedDepartureTime
-                aimedDepartureTime
-                destinationDisplay { frontText }
-                quay { publicCode }
-                serviceJourney { id journeyPattern { line { name publicCode transportMode } } }
+              expectedDepartureTime
+              aimedDepartureTime
+              destinationDisplay { frontText }
+              quay { publicCode }
+              serviceJourney {
+                id
+                journeyPattern { line { name publicCode transportMode } }
+                estimatedCalls {
+                  quay { stopPlace { id name } }
+                    expectedArrivalTime
+                    expectedDepartureTime
+                    aimedArrivalTime
+                  }
+                }
               }
             }
           }
@@ -246,6 +255,18 @@
                     </div>`
                   : ''
               }
+              ${
+                item.arrivals && item.arrivals.length
+                  ? `<div class="platform">
+                      ${item.arrivals
+                        .map(
+                          (a) =>
+                            `${a.label}: ${formatTime(a.time)} (${a.delta} min${a.delta < 0 ? ' før' : ''})`
+                        )
+                        .join(' · ')}
+                    </div>`
+                  : ''
+              }
             </div>
             <div class="time-col">
               <div class="departure-time">${item.time}</div>
@@ -267,6 +288,32 @@
           const loren = await fetchDepartures(STOP_IDS.loren);
           const sinsen = await fetchDepartures(STOP_IDS.sinsen, 80);
 
+          const importantStops = [
+            { ids: ['NSR:StopPlace:3990', 'NSR:StopPlace:58366'], label: 'Jernbanetorget' },
+            { ids: ['NSR:StopPlace:4067', 'NSR:StopPlace:58404'], label: 'Nationaltheatret' },
+            { ids: ['NSR:StopPlace:4452', 'NSR:StopPlace:58381'], label: 'Majorstuen' },
+          ];
+
+          const extractArrivals = (serviceJourney, startExpected) => {
+            if (!serviceJourney?.estimatedCalls?.length || !startExpected) return [];
+            const startMs = new Date(startExpected).getTime();
+            return importantStops
+              .map((stop) => {
+                const call = serviceJourney.estimatedCalls.find(
+                  (c) => stop.ids.includes(c.quay?.stopPlace?.id) && c.expectedArrivalTime
+                );
+                if (!call) return null;
+                const arrMs = new Date(call.expectedArrivalTime).getTime();
+                if (Number.isNaN(arrMs) || arrMs < startMs) return null;
+                return {
+                  label: stop.label,
+                  time: call.expectedArrivalTime,
+                  delta: Math.round((arrMs - startMs) / 60000),
+                };
+              })
+              .filter(Boolean);
+          };
+
           const mapCalls = (calls, filterFn, opts = {}) => {
             const { useNextHour = true } = opts;
             const base = calls.filter(filterFn).map((call) => {
@@ -280,6 +327,7 @@
                 aimed: call.aimedDepartureTime,
                 expected: call.expectedDepartureTime,
                 serviceJourneyId: call.serviceJourney?.id || '',
+                arrivals: extractArrivals(call.serviceJourney, call.expectedDepartureTime),
               };
             });
 
