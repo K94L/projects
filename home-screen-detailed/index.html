@@ -514,8 +514,14 @@
         midnight.setHours(24, 0, 0, 0);
         const nowMs = now.getTime();
         return timeseries.filter((ts) => {
-          const t = new Date(ts.time).getTime();
-          return t >= nowMs && t <= midnight.getTime();
+          const tsDate = new Date(ts.time);
+          const t = tsDate.getTime();
+          const sameHour =
+            tsDate.getFullYear() === now.getFullYear() &&
+            tsDate.getMonth() === now.getMonth() &&
+            tsDate.getDate() === now.getDate() &&
+            tsDate.getHours() === now.getHours();
+          return (t >= nowMs || sameHour) && t <= midnight.getTime();
         });
       };
 
