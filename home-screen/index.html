@@ -150,7 +150,6 @@
           headers: {
             'Content-Type': 'application/json',
             'ET-Client-Name': 'kl-home-screen',
-            'User-Agent': 'kl-home-screen',
           },
           body: JSON.stringify({ query }),
         });
@@ -260,9 +259,10 @@
           );
 
           const firstLorenWest = lorenWest.length ? new Date(lorenWest[0].expected).getTime() : null;
+          const sinsenCutoff = firstLorenWest !== null ? firstLorenWest - 4 * 60 * 1000 : null;
           const sinsenFiltered =
-            firstLorenWest !== null
-              ? sinsenRows.filter((r) => new Date(r.expected).getTime() >= firstLorenWest)
+            sinsenCutoff !== null
+              ? sinsenRows.filter((r) => new Date(r.expected).getTime() >= sinsenCutoff)
               : sinsenRows;
           const sinsenTrimmed = sinsenFiltered.slice(0, 4);
 
@@ -302,12 +302,7 @@
 
       const fetchWeather = async () => {
         const res = await fetch(
-          'https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=59.9295&lon=10.7913',
-          {
-            headers: {
-              'User-Agent': 'kl-home-screen',
-            },
-          }
+          'https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=59.9295&lon=10.7913'
         );
         if (!res.ok) throw new Error('Weather fetch failed');
         const json = await res.json();
