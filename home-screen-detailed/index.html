@@ -25,6 +25,10 @@
         <div class="date" id="clock-date">
           <span>laster dato</span>
         </div>
+        <div class="weather-summary" id="weather-summary">
+          <span id="weather-icon" aria-label="Dagens vær" class="summary-icon">--</span>
+          <span id="temp-range">--° / --°</span>
+        </div>
       </div>
 
       <div class="dashboard stacked">
@@ -146,12 +150,12 @@
       };
 
       const FALLBACK_WEATHER = [
-        { label: '13:00', temp: -1, icon: '☁️', precip: 0.0 },
-        { label: '14:00', temp: 0, icon: '☁️', precip: 0.0 },
-        { label: '15:00', temp: 0, icon: '☁️', precip: 0.0 },
-        { label: '16:00', temp: -1, icon: '☁️', precip: 0.0 },
-        { label: '17:00', temp: -1, icon: '☁️', precip: 0.0 },
-        { label: '18:00', temp: -1, icon: '☁️', precip: 0.0 },
+        { label: '13:00', temp: -1, icon: '☁️', precip: 0.0, symbolCode: 'cloudy' },
+        { label: '14:00', temp: 0, icon: '☁️', precip: 0.0, symbolCode: 'cloudy' },
+        { label: '15:00', temp: 0, icon: '☁️', precip: 0.0, symbolCode: 'cloudy' },
+        { label: '16:00', temp: -1, icon: '☁️', precip: 0.0, symbolCode: 'cloudy' },
+        { label: '17:00', temp: -1, icon: '☁️', precip: 0.0, symbolCode: 'cloudy' },
+        { label: '18:00', temp: -1, icon: '☁️', precip: 0.0, symbolCode: 'cloudy' },
       ];
 
       const diffMinutes = (expected, aimed) => {
@@ -176,11 +180,30 @@
 
       const symbolIcon = (code) => {
         if (!code) return '☁️';
+        if (code.includes('thunder')) return '⛈️';
+        if (code.includes('sleet')) return '🌨️';
         if (code.includes('rain')) return '🌧️';
         if (code.includes('snow')) return '🌨️';
         if (code.includes('cloud')) return '☁️';
         if (code.includes('sun') || code.includes('clearsky')) return '☀️';
         return '☁️';
+      };
+
+      const isSummerMonth = (date) => {
+        const m = date.getMonth();
+        return m >= 4 && m <= 7; // May–Aug
+      };
+
+      const isNightTime = (date) => {
+        const hour = date.getHours();
+        const cutoff = isSummerMonth(date) ? 21 : 18;
+        return hour >= cutoff || hour < 6;
+      };
+
+      const iconWithNight = (symbolCode, date, forceClear = false) => {
+        const isClear = forceClear || iconSeverity(symbolCode || '') <= 1;
+        if (isClear && isNightTime(date)) return '🌙';
+        return symbolIcon(symbolCode);
       };
 
       const fetchDepartures = async (stopId, limit = 40) => {
@@ -527,15 +550,61 @@
         filterUntilMidnight(timeseries).map((ts) => {
           const date = new Date(ts.time);
           const temp = ts.data?.instant?.details?.air_temperature;
-          const precip = ts.data?.next_1_hours?.details?.precipitation_amount ?? 0;
-          const icon = symbolIcon(ts.data?.next_1_hours?.summary?.symbol_code);
+          const precip = Number(ts.data?.next_1_hours?.details?.precipitation_amount ?? 0);
+          const symbolCode =
+            ts.data?.next_1_hours?.summary?.symbol_code || ts.data?.next_6_hours?.summary?.symbol_code || '';
           return {
             label: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             temp: Math.round(temp),
-            precip: precip.toFixed(1),
-            icon,
+            precip,
+            symbolCode,
+            date,
           };
         });
+
+      const iconSeverity = (code = '') => {
+        const c = code.toLowerCase();
+        if (c.includes('thunder')) return 5;
+        if (c.includes('rain')) return 4;
+        if (c.includes('sleet')) return 3.5;
+        if (c.includes('snow')) return 3;
+        if (c.includes('cloud')) return 2;
+        if (c.includes('fair') || c.includes('clearsky') || c.includes('sun')) return 1;
+        return 0;
+      };
+
+      const summarizeWeatherDay = (items) => {
+        if (!items.length) return null;
+        const temps = items.map((w) => w.temp).filter((t) => Number.isFinite(t));
+        if (!temps.length) return null;
+        const min = Math.min(...temps);
+        const max = Math.max(...temps);
+        const willRain = items.some((w) => Number(w.precip) > 0.1);
+        const sortedBySeverity = [...items]
+          .filter((w) => w.symbolCode)
+          .sort((a, b) => iconSeverity(b.symbolCode) - iconSeverity(a.symbolCode));
+        const worst = sortedBySeverity[0];
+        const allClear = items.every((w) => iconSeverity(w.symbolCode || '') <= 1);
+
+        return { min, max, willRain, worstSymbol: worst?.symbolCode || '', allClear };
+      };
+
+      const updateWeatherSummary = (summary) => {
+        const rangeEl = document.getElementById('temp-range');
+        const iconEl = document.getElementById('weather-icon');
+        if (!summary || !rangeEl || !iconEl) return;
+        rangeEl.textContent = `${summary.min}° / ${summary.max}°`;
+        const now = new Date();
+        const worstIcon = iconWithNight(summary.worstSymbol || 'clearsky', now, summary.allClear);
+        iconEl.textContent = worstIcon;
+      };
+
+      const resolveItemDate = (item) => {
+        if (item.date) return new Date(item.date);
+        const now = new Date();
+        const [hh, mm] = String(item.label || '').split(':').map((p) => Number(p));
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate(), Number.isFinite(hh) ? hh : 0, Number.isFinite(mm) ? mm : 0);
+      };
 
       const renderWeather = (items, noticeText) => {
         const grid = document.getElementById('weather-grid');
@@ -554,12 +623,14 @@
         }
 
         items.forEach((item) => {
+          const cellDate = resolveItemDate(item);
+          const displayIcon = iconWithNight(item.symbolCode || '', cellDate, iconSeverity(item.symbolCode || '') <= 1);
           const cell = document.createElement('div');
           cell.className = 'weather-cell';
           cell.innerHTML = `
             <div class="weather-time">${item.label}</div>
             <div class="weather-temp">${item.temp}°</div>
-            <div>${item.icon}</div>
+            <div class="weather-icon">${displayIcon}</div>
             <div class="weather-precip">${Number(item.precip).toFixed(1)} mm</div>
           `;
           grid.appendChild(cell);
@@ -570,15 +641,18 @@
         try {
           const ts = await fetchWeather();
           const items = normalizeWeather(ts);
+          const summary = summarizeWeatherDay(items);
           renderWeather(
             items.length ? items : FALLBACK_WEATHER,
             items.length ? '' : 'Viser demo-vær – ingen data'
           );
+          updateWeatherSummary(summary || summarizeWeatherDay(FALLBACK_WEATHER));
           setStatus('live', 'Live');
         } catch (err) {
           console.error(err);
           setStatus('error', 'Ingen sanntid');
           renderWeather(FALLBACK_WEATHER, 'Fikk ikke værdata – viser demo');
+          updateWeatherSummary(summarizeWeatherDay(FALLBACK_WEATHER));
         }
       };
 
