@@ -353,6 +353,7 @@
           const extractArrivals = (serviceJourney, startExpected) => {
             if (!serviceJourney?.estimatedCalls?.length || !startExpected) return [];
             const startMs = new Date(startExpected).getTime();
+            if (Number.isNaN(startMs)) return [];
             return importantStops
               .map((stop) => {
                 const candidates = serviceJourney.estimatedCalls
@@ -361,14 +362,25 @@
                     time: c.expectedArrivalTime,
                     ms: new Date(c.expectedArrivalTime).getTime(),
                   }))
-                  .filter((c) => !Number.isNaN(c.ms) && c.ms >= startMs)
+                  .filter((c) => !Number.isNaN(c.ms))
                   .sort((a, b) => a.ms - b.ms);
+
                 if (!candidates.length) return null;
-                const chosen = candidates[0];
+
+                const chosen = candidates.find((c) => c.ms >= startMs) || candidates[0];
+                let diffMs = chosen.ms - startMs;
+
+                // Wrap around midnight if the best match is before departure on the same service day.
+                if (diffMs < 0) diffMs += 24 * 60 * 60 * 1000;
+
+                const diffMin = Math.round(diffMs / 60000);
+                // Guard against bogus long durations (e.g., if the API jumps a day ahead).
+                if (diffMin > 240) return null;
+
                 return {
                   label: stop.label,
                   time: chosen.time,
-                  delta: Math.round((chosen.ms - startMs) / 60000),
+                  delta: diffMin,
                 };
               })
               .filter(Boolean);
