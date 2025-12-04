@@ -5,119 +5,104 @@ export default async function handler(req, res) {
   }
 
   const symbolMap = {
-    vix: 'VIXY',
-    brent: 'BNO',
-    dxy: 'DXY',
-    dxyAlt: 'UUP', // fallback if DXY is unavailable on the plan
-    hsi: 'EWH',
-    nikkei: 'EWJ',
-    asx: 'EWA',
-    dax: 'EWG',
-    obx: 'ENOR',
-    ftse: 'EWU',
-    spx: 'SPY',
-    ndx: 'QQQ',
-    dow: 'DIA',
+    vix: ['VIXY', 'VXX'],
+    brent: ['BNO', 'USO'],
+    dxy: ['DXY', 'UUP'],
+    hsi: ['EWH'],
+    nikkei: ['EWJ'],
+    asx: ['EWA'],
+    dax: ['EWG'],
+    obx: ['ENOR'],
+    ftse: ['EWU'],
+    spx: ['SPY'],
+    ndx: ['QQQ'],
+    dow: ['DIA'],
   };
 
-  const symbols = Array.from(
-    new Set([
-      symbolMap.vix,
-      symbolMap.brent,
-      symbolMap.dxy,
-      symbolMap.dxyAlt,
-      symbolMap.hsi,
-      symbolMap.nikkei,
-      symbolMap.asx,
-      symbolMap.dax,
-      symbolMap.obx,
-      symbolMap.ftse,
-      symbolMap.spx,
-      symbolMap.ndx,
-      symbolMap.dow,
-    ])
-  );
-
-  const chunk = (arr, size) => {
-    const res = [];
-    for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size));
-    return res;
-  };
-
-  const fetchBatch = async (list) => {
-    const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(list.join(','))}&apikey=${token}`;
-    const r = await fetch(url);
-    if (!r.ok) {
-      const text = await r.text();
-      console.error('Twelve Data error', r.status, text);
-      return {};
+  const fetchQuote = async (sym) => {
+    const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(sym)}&apikey=${token}`;
+    try {
+      const r = await fetch(url);
+      if (!r.ok) {
+        const text = await r.text();
+        console.error('Twelve Data error', sym, r.status, text);
+        return null;
+      }
+      const json = await r.json();
+      const price = Number(json?.price);
+      const pct = Number(json?.percent_change);
+      return { price: Number.isFinite(price) ? price : null, pct: Number.isFinite(pct) ? pct : null };
+    } catch (err) {
+      console.error('Quote fetch failed', sym, err);
+      return null;
     }
-    const json = await r.json();
-    return json;
+  };
+
+  const firstAvailable = async (list) => {
+    for (const sym of list) {
+      const q = await fetchQuote(sym);
+      if (q && (q.price !== null || q.pct !== null)) return q;
+    }
+    return null;
   };
 
   try {
-    const chunks = chunk(symbols, 6);
-    const results = await Promise.all(chunks.map(fetchBatch));
-    const json = results.reduce((acc, cur) => Object.assign(acc, cur), {});
-
-    // Twelve Data returns an object keyed by symbol when multiple symbols are requested
-    const getPrice = (sym) => {
-      const item = json[sym];
-      if (!item || typeof item.price === 'undefined') return null;
-      const num = Number(item.price);
-      return Number.isFinite(num) ? num : null;
-    };
-
-    const getChangePct = (sym) => {
-      const item = json[sym];
-      if (!item || typeof item.percent_change === 'undefined') return null;
-      const num = Number(item.percent_change);
-      return Number.isFinite(num) ? num : null;
-    };
+    const [
+      vixQ,
+      brentQ,
+      dxyQ,
+      hsiQ,
+      nikkeiQ,
+      asxQ,
+      daxQ,
+      obxQ,
+      ftseQ,
+      spxQ,
+      ndxQ,
+      dowQ,
+    ] = await Promise.all([
+      firstAvailable(symbolMap.vix),
+      firstAvailable(symbolMap.brent),
+      firstAvailable(symbolMap.dxy),
+      firstAvailable(symbolMap.hsi),
+      firstAvailable(symbolMap.nikkei),
+      firstAvailable(symbolMap.asx),
+      firstAvailable(symbolMap.dax),
+      firstAvailable(symbolMap.obx),
+      firstAvailable(symbolMap.ftse),
+      firstAvailable(symbolMap.spx),
+      firstAvailable(symbolMap.ndx),
+      firstAvailable(symbolMap.dow),
+    ]);
 
     const data = {
       asOf: new Date().toISOString(),
-      vix: { value: getPrice(symbolMap.vix) },
-      brent: { value: getPrice(symbolMap.brent) },
-      dxy: {
-        value: getPrice(symbolMap.dxy) ?? getPrice(symbolMap.dxyAlt),
-        change1d: getChangePct(symbolMap.dxy) ?? getChangePct(symbolMap.dxyAlt),
-      },
+      vix: { value: vixQ?.price ?? null },
+      brent: { value: brentQ?.price ?? null },
+      dxy: { value: dxyQ?.price ?? null, change1d: dxyQ?.pct ?? null },
       asia: {
-        hangSeng: getChangePct(symbolMap.hsi),
-        nikkei: getChangePct(symbolMap.nikkei),
-        asx: getChangePct(symbolMap.asx),
+        hangSeng: hsiQ?.pct ?? null,
+        nikkei: nikkeiQ?.pct ?? null,
+        asx: asxQ?.pct ?? null,
       },
       europe: {
-        dax: getChangePct(symbolMap.dax),
-        obx: getChangePct(symbolMap.obx),
-        ftse: getChangePct(symbolMap.ftse),
+        dax: daxQ?.pct ?? null,
+        obx: obxQ?.pct ?? null,
+        ftse: ftseQ?.pct ?? null,
       },
       usa: {
-        spx: getChangePct(symbolMap.spx),
-        ndx: getChangePct(symbolMap.ndx),
-        dow: getChangePct(symbolMap.dow),
+        spx: spxQ?.pct ?? null,
+        ndx: ndxQ?.pct ?? null,
+        dow: dowQ?.pct ?? null,
       },
     };
-
-    const availablePrices = ['vix', 'brent', 'dxy'].filter((k) => data[k].value !== null).length;
-    const availableChanges =
-      ['hangSeng', 'nikkei', 'asx', 'dax', 'obx', 'ftse', 'spx', 'ndx', 'dow'].filter(
-        (k) =>
-          data.asia[k] !== undefined
-            ? data.asia[k] !== null
-            : data.europe[k] !== undefined
-              ? data.europe[k] !== null
-              : data.usa[k] !== null
-      ).length;
 
     res.setHeader('Cache-Control', 'no-store');
     return res.json(data);
   } catch (err) {
     console.error(err);
     if (err && err.status === 429) {
-      return res.status(429).json({ error: 'Rate limited by Finnhub' });
+      return res.status(429).json({ error: 'Rate limited by provider' });
     }
     return res.status(500).json({ error: 'Fetch failed' });
   }
