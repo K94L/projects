@@ -19,61 +19,60 @@ export default async function handler(req, res) {
     dow: ['DIA'],
   };
 
-  const fetchQuote = async (sym) => {
-    const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(sym)}&apikey=${token}`;
+  const symbolsFlat = Array.from(
+    new Set(
+      Object.values(symbolMap)
+        .flat()
+        .filter(Boolean)
+    )
+  );
+
+  const fetchBatch = async (list) => {
+    const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(list.join(','))}&apikey=${token}`;
     try {
       const r = await fetch(url);
       if (!r.ok) {
         const text = await r.text();
-        console.error('Twelve Data error', sym, r.status, text);
-        return null;
+        console.error('Twelve Data batch error', r.status, text);
+        return {};
       }
       const json = await r.json();
-      const price = Number(json?.price);
-      const pct = Number(json?.percent_change);
-      return { price: Number.isFinite(price) ? price : null, pct: Number.isFinite(pct) ? pct : null };
+      return json;
     } catch (err) {
-      console.error('Quote fetch failed', sym, err);
-      return null;
+      console.error('Batch fetch failed', err);
+      return {};
     }
   };
 
-  const firstAvailable = async (list) => {
+  const pickFirst = (json, list) => {
     for (const sym of list) {
-      const q = await fetchQuote(sym);
-      if (q && (q.price !== null || q.pct !== null)) return q;
+      const item = json[sym];
+      if (!item) continue;
+      const price = Number(item.price);
+      const pct = Number(item.percent_change);
+      const priceVal = Number.isFinite(price) ? price : null;
+      const pctVal = Number.isFinite(pct) ? pct : null;
+      if (priceVal !== null || pctVal !== null) {
+        return { price: priceVal, pct: pctVal };
+      }
     }
-    return null;
+    return { price: null, pct: null };
   };
 
   try {
-    const [
-      vixQ,
-      brentQ,
-      dxyQ,
-      hsiQ,
-      nikkeiQ,
-      asxQ,
-      daxQ,
-      obxQ,
-      ftseQ,
-      spxQ,
-      ndxQ,
-      dowQ,
-    ] = await Promise.all([
-      firstAvailable(symbolMap.vix),
-      firstAvailable(symbolMap.brent),
-      firstAvailable(symbolMap.dxy),
-      firstAvailable(symbolMap.hsi),
-      firstAvailable(symbolMap.nikkei),
-      firstAvailable(symbolMap.asx),
-      firstAvailable(symbolMap.dax),
-      firstAvailable(symbolMap.obx),
-      firstAvailable(symbolMap.ftse),
-      firstAvailable(symbolMap.spx),
-      firstAvailable(symbolMap.ndx),
-      firstAvailable(symbolMap.dow),
-    ]);
+    const json = await fetchBatch(symbolsFlat);
+    const vixQ = pickFirst(json, symbolMap.vix);
+    const brentQ = pickFirst(json, symbolMap.brent);
+    const dxyQ = pickFirst(json, symbolMap.dxy);
+    const hsiQ = pickFirst(json, symbolMap.hsi);
+    const nikkeiQ = pickFirst(json, symbolMap.nikkei);
+    const asxQ = pickFirst(json, symbolMap.asx);
+    const daxQ = pickFirst(json, symbolMap.dax);
+    const obxQ = pickFirst(json, symbolMap.obx);
+    const ftseQ = pickFirst(json, symbolMap.ftse);
+    const spxQ = pickFirst(json, symbolMap.spx);
+    const ndxQ = pickFirst(json, symbolMap.ndx);
+    const dowQ = pickFirst(json, symbolMap.dow);
 
     const data = {
       asOf: new Date().toISOString(),
