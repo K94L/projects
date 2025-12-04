@@ -20,19 +20,46 @@ export default async function handler(req, res) {
     dow: 'DIA',
   };
 
-  const symbols = Object.values(symbolMap).join(',');
+  const symbols = Array.from(
+    new Set([
+      symbolMap.vix,
+      symbolMap.brent,
+      symbolMap.dxy,
+      symbolMap.dxyAlt,
+      symbolMap.hsi,
+      symbolMap.nikkei,
+      symbolMap.asx,
+      symbolMap.dax,
+      symbolMap.obx,
+      symbolMap.ftse,
+      symbolMap.spx,
+      symbolMap.ndx,
+      symbolMap.dow,
+    ])
+  );
 
-  const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbols)}&apikey=${token}`;
+  const chunk = (arr, size) => {
+    const res = [];
+    for (let i = 0; i < arr.length; i += size) res.push(arr.slice(i, i + size));
+    return res;
+  };
 
-  try {
+  const fetchBatch = async (list) => {
+    const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(list.join(','))}&apikey=${token}`;
     const r = await fetch(url);
     if (!r.ok) {
-      const status = r.status;
       const text = await r.text();
-      console.error('Twelve Data error', status, text);
-      return res.status(status).json({ error: 'Provider error' });
+      console.error('Twelve Data error', r.status, text);
+      return {};
     }
     const json = await r.json();
+    return json;
+  };
+
+  try {
+    const chunks = chunk(symbols, 6);
+    const results = await Promise.all(chunks.map(fetchBatch));
+    const json = results.reduce((acc, cur) => Object.assign(acc, cur), {});
 
     // Twelve Data returns an object keyed by symbol when multiple symbols are requested
     const getPrice = (sym) => {
@@ -84,10 +111,6 @@ export default async function handler(req, res) {
               ? data.europe[k] !== null
               : data.usa[k] !== null
       ).length;
-
-    if (availablePrices === 0 && availableChanges === 0) {
-      return res.status(502).json({ error: 'No data returned from provider' });
-    }
 
     res.setHeader('Cache-Control', 'no-store');
     return res.json(data);
