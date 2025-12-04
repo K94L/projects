@@ -12,38 +12,38 @@
       <header>
         <a href="../" class="logo">
           <span class="logo-badge">KL</span>
-          <span>Tilbake</span>
+          <span>Back</span>
         </a>
         <div id="fetch-status" class="status-pill loading">
           <span class="dot"></span>
-          <span>Henter</span>
+          <span>Fetching</span>
         </div>
       </header>
 
       <div class="hero-clock">
         <div class="time" id="clock-time">--:--</div>
         <div class="date" id="clock-date">
-          <span>laster dato</span>
+          <span>loading date</span>
         </div>
       </div>
 
       <div class="dashboard">
         <section class="departures-card">
-          <div class="panel-title">🚇 Løren T-bane</div>
-          <div class="badge">Spor 1</div>
+          <div class="panel-title">🚇 Løren Metro</div>
+          <div class="badge">Track 1</div>
           <div id="loren-east" class="departures-list"></div>
-          <div class="badge" style="margin-top: 12px">Spor 2</div>
+          <div class="badge" style="margin-top: 12px">Track 2</div>
           <div id="loren-west" class="departures-list"></div>
         </section>
 
         <section class="departures-card">
-          <div class="panel-title">🚇 Sinsen T-bane</div>
-          <div class="badge">Spor 2</div>
+          <div class="panel-title">🚇 Sinsen Metro</div>
+          <div class="badge">Track 2</div>
           <div id="sinsen-list" class="departures-list"></div>
         </section>
 
         <section class="weather-card">
-          <div class="panel-title">🌤️ Været i Oslo</div>
+          <div class="panel-title">🌤️ Weather in Oslo</div>
           <div id="weather-grid" class="weather-grid" style="margin-top: 12px"></div>
         </section>
       </div>
@@ -116,7 +116,7 @@
       };
 
       const delayLabel = (delta) => {
-        if (delta <= 0) return { text: 'i rute', cls: 'ok' };
+        if (delta <= 0) return { text: 'on time', cls: 'ok' };
         if (delta <= 2) return { text: `+${delta} min`, cls: 'warn' };
         return { text: `+${delta} min`, cls: 'bad' };
       };
@@ -163,7 +163,7 @@
         const el = document.getElementById(containerId);
         el.innerHTML = '';
         if (!rows.length) {
-          el.innerHTML = `<div class="badge">${noticeText || 'Ingen avganger akkurat nå'}</div>`;
+          el.innerHTML = `<div class="badge">${noticeText || 'No departures right now'}</div>`;
           return;
         }
 
@@ -183,10 +183,10 @@
             <div class="line-pill">${item.line}</div>
             <div class="departure-main">
               <div class="destination">${item.destination}</div>
-              <div class="platform">Spor ${item.platform || '–'}</div>
+              <div class="platform">Track ${item.platform || '–'}</div>
               ${
                 item.sinsenArrival
-                  ? `<div class="platform" style="color: var(--success)">Ankommer Sinsen ca ${item.sinsenArrival}</div>`
+                  ? `<div class="platform" style="color: var(--success)">Arrives Sinsen ~${item.sinsenArrival}</div>`
                   : ''
               }
             </div>
@@ -201,7 +201,7 @@
 
       const loadDepartures = async () => {
         try {
-          setStatus('loading', 'Oppdaterer…');
+          setStatus('loading', 'Updating…');
           const loren = await fetchDepartures(STOP_IDS.loren);
           const sinsen = await fetchDepartures(STOP_IDS.sinsen, 80);
 
@@ -210,7 +210,7 @@
               const line = call.serviceJourney?.journeyPattern?.line;
               return {
                 line: line?.publicCode || '?',
-                destination: call.destinationDisplay?.frontText || 'Ukjent',
+                destination: call.destinationDisplay?.frontText || 'Unknown',
                 platform: call.quay?.publicCode || '',
                 time: formatTime(call.expectedDepartureTime),
                 delayMinutes: diffMinutes(call.expectedDepartureTime, call.aimedDepartureTime),
@@ -269,25 +269,25 @@
           renderDepartures(
             'loren-east',
             lorenEast.length ? lorenEast : FALLBACK_DEPARTURES.lorenEast,
-            lorenEast.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
+            lorenEast.length ? '' : 'Showing demo data – no live data in the next hour'
           );
           renderDepartures(
             'loren-west',
             lorenWest.length ? lorenWest : FALLBACK_DEPARTURES.lorenWest,
-            lorenWest.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
+            lorenWest.length ? '' : 'Showing demo data – no live data in the next hour'
           );
           renderDepartures(
             'sinsen-list',
             sinsenTrimmed.length ? sinsenTrimmed : FALLBACK_DEPARTURES.sinsen,
-            sinsenTrimmed.length ? '' : 'Viser demo-data – ingen sanntid i neste time'
+            sinsenTrimmed.length ? '' : 'Showing demo data – no live data in the next hour'
           );
           setStatus('live', 'Live');
         } catch (err) {
           console.error(err);
-          setStatus('error', 'Ingen sanntid');
-          renderDepartures('loren-east', FALLBACK_DEPARTURES.lorenEast, 'Fikk ikke Ruter-data – viser demo');
-          renderDepartures('loren-west', FALLBACK_DEPARTURES.lorenWest, 'Fikk ikke Ruter-data – viser demo');
-          renderDepartures('sinsen-list', FALLBACK_DEPARTURES.sinsen, 'Fikk ikke Ruter-data – viser demo');
+          setStatus('error', 'No live data');
+          renderDepartures('loren-east', FALLBACK_DEPARTURES.lorenEast, 'Could not fetch Ruter data – showing demo');
+          renderDepartures('loren-west', FALLBACK_DEPARTURES.lorenWest, 'Could not fetch Ruter data – showing demo');
+          renderDepartures('sinsen-list', FALLBACK_DEPARTURES.sinsen, 'Could not fetch Ruter data – showing demo');
         }
       };
 
@@ -344,7 +344,7 @@
         const grid = document.getElementById('weather-grid');
         grid.innerHTML = '';
         if (!items.length) {
-          grid.innerHTML = `<div class="badge">${noticeText || 'Ingen værdata'}</div>`;
+          grid.innerHTML = `<div class="badge">${noticeText || 'No weather data'}</div>`;
           return;
         }
 
@@ -375,13 +375,13 @@
           const items = normalizeWeather(ts);
           renderWeather(
             items.length ? items : FALLBACK_WEATHER,
-            items.length ? '' : 'Viser demo-vær – ingen data'
+            items.length ? '' : 'Showing demo weather – no data'
           );
           setStatus('live', 'Live');
         } catch (err) {
           console.error(err);
-          setStatus('error', 'Ingen sanntid');
-          renderWeather(FALLBACK_WEATHER, 'Fikk ikke værdata – viser demo');
+          setStatus('error', 'No live data');
+          renderWeather(FALLBACK_WEATHER, 'Could not fetch weather – showing demo');
         }
       };
 
@@ -391,7 +391,7 @@
           hour: '2-digit',
           minute: '2-digit',
         });
-        document.getElementById('clock-date').textContent = now.toLocaleDateString('nb-NO', {
+        document.getElementById('clock-date').textContent = now.toLocaleDateString('en-GB', {
           weekday: 'long',
           day: 'numeric',
           month: 'long',

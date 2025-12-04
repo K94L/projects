@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Market Crash Predictor</title>
+    <link rel="stylesheet" href="../assets/main.css" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <a href="../" class="logo">
+          <span class="logo-badge">KL</span>
+          <span>Projects</span>
+        </a>
+        <div class="pill" style="font-weight: 700; color: var(--accent)">Exploration build</div>
+      </header>
+
+      <main class="stack">
+        <section class="card market-hero">
+          <div class="market-hero__text">
+            <div class="tag">
+              <span>New</span>
+              <strong>Market Crash Predictor</strong>
+            </div>
+            <h1 style="margin-top: 10px; margin-bottom: 12px">Market Crash Predictor</h1>
+            <p>
+              A focused cockpit for monitoring macro stress signals, liquidity cracks, and momentum collapses that tend to precede sharp equity drawdowns.
+            </p>
+            <div class="market-badges">
+              <div class="status-pill live">
+                <span class="dot"></span>
+                <span>Prototype</span>
+              </div>
+              <div class="status-pill loading">
+                <span class="dot"></span>
+                <span>Data wiring next</span>
+              </div>
+              <div class="pill">Bias: downside protection first</div>
+            </div>
+          </div>
+
+          <div class="market-hero__panel">
+            <div class="panel-title" style="margin-bottom: 6px">Crash risk dial</div>
+            <div class="dial">
+              <div class="dial__value">0.32</div>
+              <div class="dial__label">Current composite probability</div>
+              <div class="dial__bar">
+                <div class="dial__bar-fill"></div>
+              </div>
+              <div class="dial__legend">
+                <span>Calm</span>
+                <span>Caution</span>
+                <span>Stress</span>
+              </div>
+            </div>
+            <div class="dial-notes">
+              <div class="pill" style="background: rgba(255, 209, 102, 0.15); border-color: rgba(255, 209, 102, 0.4); color: var(--warn)">Vol is rising</div>
+              <div class="pill" style="background: rgba(255, 123, 123, 0.15); border-color: rgba(255, 123, 123, 0.4); color: var(--danger)">Credit spreads widening</div>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>Signal snapshot</h2>
+            <div class="pill">Last sync: planned</div>
+          </div>
+          <div class="insight-grid">
+            <div class="insight-card">
+              <div class="panel-title">Volatility regime</div>
+              <div class="stat-row">
+                <div>
+                  <div class="stat-label">VIX percentile</div>
+                  <div class="stat-value warn">74%</div>
+                </div>
+                <div class="spark-bar">
+                  <span style="width: 74%"></span>
+                </div>
+              </div>
+              <p>Three-day pop with spot VIX > term structure. Watch for mean reversion or cascade.</p>
+            </div>
+
+            <div class="insight-card">
+              <div class="panel-title">Liquidity stress</div>
+              <div class="stat-row">
+                <div>
+                  <div class="stat-label">Bid-ask strain</div>
+                  <div class="stat-value danger">Flagged</div>
+                </div>
+                <div class="pill" style="background: rgba(255, 123, 123, 0.15); border-color: rgba(255, 123, 123, 0.35); color: var(--danger)">
+                  ETF dislocations showing
+                </div>
+              </div>
+              <p>ETF / index basis has flipped negative in early session; monitor depth vs. last week baseline.</p>
+            </div>
+
+            <div class="insight-card">
+              <div class="panel-title">Momentum</div>
+              <div class="stat-row">
+                <div>
+                  <div class="stat-label">Breadth</div>
+                  <div class="stat-value">34% up</div>
+                </div>
+                <div class="spark-bar">
+                  <span style="width: 34%"></span>
+                </div>
+              </div>
+              <p>Advance/decline line sliding; leadership narrowing to defensives while tech cools.</p>
+            </div>
+
+            <div class="insight-card">
+              <div class="panel-title">Macro shocks</div>
+              <div class="stat-row">
+                <div>
+                  <div class="stat-label">Event risk</div>
+                  <div class="stat-value warn">Elevated</div>
+                </div>
+                <div class="pill">FOMC + earnings stack</div>
+              </div>
+              <p>Stacked catalysts over the next 5 sessions; stress meter to adjust weights around releases.</p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>Crash triggers in real time</h2>
+            <div class="pill" id="last-updated">Updates every 30 seconds</div>
+            <div class="pill" id="next-refresh">Next refresh in 30s</div>
+          </div>
+          <div id="crash-mode" class="status-pill">
+            <span class="dot"></span>
+            <span>Waiting for signals</span>
+          </div>
+          <div class="signal-list" id="signal-list"></div>
+          <div class="pill" style="margin-top: 12px">
+            BoJ Dec 19 + Fed Dec 18 = higher odds of a stress chain
+          </div>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>Build path</h2>
+            <div class="pill">Pre-data wiring</div>
+          </div>
+          <div class="roadmap">
+            <div class="roadmap-step">
+              <div class="roadmap-step__title">Data plumbing</div>
+              <p>Route live volatility, credit spreads, and breadth feeds into a single aggregator.</p>
+              <div class="spark-bar compact">
+                <span style="width: 35%"></span>
+              </div>
+            </div>
+            <div class="roadmap-step">
+              <div class="roadmap-step__title">Signal engine</div>
+              <p>Blend z-scored factors into a probability; run rolling calibration against recent stress events.</p>
+              <div class="spark-bar compact">
+                <span style="width: 20%"></span>
+              </div>
+            </div>
+            <div class="roadmap-step">
+              <div class="roadmap-step__title">Risk UX</div>
+              <p>Alert states, scenario notes, and a minimal API for other dashboards to consume.</p>
+              <div class="spark-bar compact">
+                <span style="width: 50%"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script>
+      const POLL_INTERVAL_MS = 30000;
+      const ENDPOINT = '/api/market-signals';
+      let nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
+
+      const SAMPLE_PAYLOAD = {
+        asOf: '2025-12-03T09:00:00Z',
+        vix: { value: 28.4 },
+        brent: { value: 59.3 },
+        dxy: { value: 101.2, change1d: 0.4 },
+        asia: { hangSeng: -3.1, nikkei: -0.8, asx: -0.9 },
+        europe: { dax: -1.9, obx: -2.1, ftse: -1.4 },
+        usa: { spx: -1.2, ndx: -0.9, dow: -0.8 },
+      };
+
+      const renderStatusPill = (state, text) => {
+        const pill = document.getElementById('crash-mode');
+        if (!pill) return;
+        pill.classList.remove('live', 'error', 'loading', 'green', 'yellow', 'orange', 'red');
+        pill.classList.add(state);
+        pill.querySelector('span:nth-child(2)').textContent = text;
+      };
+
+      const setUpdated = (label) => {
+        const el = document.getElementById('last-updated');
+        if (!el) return;
+        el.textContent = label;
+      };
+
+      const setNextRefresh = () => {
+        const el = document.getElementById('next-refresh');
+        if (!el) return;
+        const diff = Math.max(0, nextRefreshAt - Date.now());
+        const sec = Math.round(diff / 1000);
+        el.textContent = sec === 1 ? 'Next refresh in 1s' : `Next refresh in ${sec}s`;
+      };
+
+      const signalTemplates = [
+        {
+          id: 'vix',
+          title: 'VIX > 27 (panic) → 30–35 = capitulation',
+          eval: (d) => {
+            const value = d?.vix?.value ?? 0;
+            const level = value >= 30 ? 'red' : value >= 27 ? 'orange' : value >= 20 ? 'yellow' : 'green';
+            return {
+              level,
+              value: `${value.toFixed(1)}`,
+              detail: value >= 30 ? 'Capitulation zone' : value >= 27 ? 'Panic band' : 'Calm',
+            };
+          },
+        },
+        {
+          id: 'brent',
+          title: 'Brent < 60 USD (58 = next stop)',
+          eval: (d) => {
+            const value = d?.brent?.value ?? 0;
+            const level = value < 58 ? 'red' : value < 60 ? 'orange' : value < 65 ? 'yellow' : 'green';
+            return {
+              level,
+              value: `${value.toFixed(1)} USD`,
+              detail: value < 58 ? 'Under 58: capitulation risk' : value < 60 ? 'Breaking 60: yellow' : 'Above 60: green',
+            };
+          },
+        },
+        {
+          id: 'mining',
+          title: 'Industrial / mining trend',
+          eval: () => ({
+            level: 'green',
+            value: 'N/A',
+            detail: 'Not monitored right now',
+          }),
+        },
+        {
+          id: 'dxy',
+          title: 'USD / DXY spikes (102+ = commodity pain)',
+          eval: (d) => {
+            const value = d?.dxy?.value ?? 0;
+            const level = value >= 102 ? 'red' : value >= 100.5 ? 'orange' : value >= 99 ? 'yellow' : 'green';
+            return {
+              level,
+              value: `${value.toFixed(1)}`,
+              detail:
+                level === 'red'
+                  ? 'Above 102: pressure on commodities'
+                  : level === 'orange'
+                    ? 'Dollar surge building'
+                    : level === 'yellow'
+                      ? 'Dollar firming'
+                      : 'Calm',
+            };
+          },
+        },
+        {
+          id: 'asia',
+          title: 'Asia first: Hang Seng –2–4 %, Nikkei red, Australia red',
+          eval: (d) => {
+            const hs = d?.asia?.hangSeng ?? 0;
+            const nik = d?.asia?.nikkei ?? 0;
+            const asx = d?.asia?.asx ?? 0;
+            const broadRed = nik < 0 && asx < 0;
+            const level = hs <= -3 && broadRed ? 'red' : hs <= -2 || broadRed ? 'orange' : hs <= -1 || nik < 0 || asx < 0 ? 'yellow' : 'green';
+            return {
+              level,
+              value: `HS ${hs.toFixed(1)} %, Nikkei ${nik.toFixed(1)} %, ASX ${asx.toFixed(1)} %`,
+              detail: level === 'red' ? 'Asia in red: high risk' : level === 'orange' ? 'Pressure building in Asia' : level === 'yellow' ? 'Asia soft' : 'Calm',
+            };
+          },
+        },
+        {
+          id: 'europe',
+          title: 'Europe –1–3 % (DAX, Oslo, UK)',
+          eval: (d) => {
+            const dax = d?.europe?.dax ?? 0;
+            const obx = d?.europe?.obx ?? 0;
+            const ftse = d?.europe?.ftse ?? 0;
+            const avg = (dax + obx + ftse) / 3;
+            const level = avg <= -3 ? 'red' : avg <= -2 ? 'orange' : avg <= -1 ? 'yellow' : 'green';
+            return {
+              level,
+              value: `DAX ${dax.toFixed(1)} %, OBX ${obx.toFixed(1)} %, FTSE ${ftse.toFixed(1)} %`,
+              detail: level === 'red' ? 'Europe deep red' : level === 'orange' ? 'Europe orange' : level === 'yellow' ? 'Europe yellow' : 'Stable',
+            };
+          },
+        },
+        {
+          id: 'usa',
+          title: 'US red + tech no longer holds (Nasdaq/Mag7)',
+          eval: (d) => {
+            const spx = d?.usa?.spx ?? 0;
+            const ndx = d?.usa?.ndx ?? 0;
+            const level = spx <= -1.5 && ndx <= -1 ? 'red' : spx <= -1 || ndx <= -0.8 ? 'orange' : spx < 0 || ndx < 0 ? 'yellow' : 'green';
+            return {
+              level,
+              value: `S&P ${spx.toFixed(1)} %, Nasdaq ${ndx.toFixed(1)} %`,
+              detail: level === 'red' ? 'Both red, tech failing' : level === 'orange' ? 'US red, tech weak' : level === 'yellow' ? 'US soft' : 'No stress',
+            };
+          },
+        },
+      ];
+
+      const crashModeLabel = (results) => {
+        const map = Object.fromEntries(results.map((r) => [r.id, r.level]));
+        const keyTrip = ['vix', 'brent', 'asia'].every((k) => map[k] === 'red' || map[k] === 'orange');
+        if (keyTrip) return { cls: 'red', text: 'CRASH MODE: 1 + 2 + 5 triggered' };
+        if (map.brent === 'orange' || map.europe === 'orange' || map.brent === 'red' || map.europe === 'red') {
+          return { cls: 'orange', text: 'Orange: oil/Europe under pressure' };
+        }
+        if (Object.values(map).some((v) => v === 'yellow')) return { cls: 'yellow', text: 'Yellow: watchlist' };
+        return { cls: 'green', text: 'Normal / green' };
+      };
+
+      const renderSignals = (data) => {
+        const container = document.getElementById('signal-list');
+        if (!container) return;
+        container.innerHTML = '';
+
+        const results = signalTemplates.map((tpl) => ({
+          ...tpl.eval(data),
+          id: tpl.id,
+          title: tpl.title,
+        }));
+
+        results.forEach((res) => {
+          const card = document.createElement('div');
+          card.className = `signal-card ${res.level}`;
+          card.innerHTML = `
+            <div class="signal-head">
+              <div class="panel-title">${res.title}</div>
+              <span class="signal-chip ${res.level}">${res.level.toUpperCase()}</span>
+            </div>
+            <div class="signal-meta">
+              <div class="signal-value">${res.value}</div>
+              <div class="signal-detail">${res.detail}</div>
+            </div>
+          `;
+          container.appendChild(card);
+        });
+
+        const overall = crashModeLabel(results);
+        renderStatusPill(overall.cls, overall.text);
+      };
+
+      const fetchSignals = async () => {
+        try {
+          const res = await fetch(ENDPOINT, { cache: 'no-store' });
+          if (!res.ok) throw new Error('Bad response');
+          const data = await res.json();
+          renderSignals(data);
+          renderStatusPill('live', 'Updated');
+          setUpdated(`Updated ${new Date().toLocaleTimeString()}`);
+        } catch (err) {
+          console.warn('Falling back to sample data', err);
+          renderSignals(SAMPLE_PAYLOAD);
+          renderStatusPill('error', 'Showing sample data');
+          setUpdated('Sample data (API missing)');
+        }
+        nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
+        setNextRefresh();
+      };
+
+      setUpdated('Loading first datapoint…');
+      fetchSignals();
+      setInterval(fetchSignals, POLL_INTERVAL_MS);
+      setInterval(setNextRefresh, 1000);
+    </script>
+  </body>
+</html>
