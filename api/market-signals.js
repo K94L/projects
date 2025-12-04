@@ -1,67 +1,77 @@
 export default async function handler(req, res) {
-  const token = process.env.FINNHUB_TOKEN;
+  const token = process.env.TWELVE_DATA_KEY;
   if (!token) {
-    return res.status(500).json({ error: 'Missing FINNHUB_TOKEN' });
+    return res.status(500).json({ error: 'Missing TWELVE_DATA_KEY' });
   }
 
-  // Symbols picked to stay within Finnhub free tier (ETF proxies only)
-  const symbols = {
-    vix: ['VIXY', 'VXX'], // VIX ETFs
-    brent: ['USO', 'BNO'], // crude ETFs
-    dxy: ['UUP'], // dollar index ETF
-    hsi: ['EWH'], // HK ETF proxy
-    nikkei: ['EWJ'], // Japan ETF proxy
-    asx: ['EWA'], // Australia ETF proxy
-    dax: ['EWG'], // Germany ETF proxy
-    obx: ['ENOR'], // Norway ETF proxy
-    ftse: ['EWU'], // UK ETF proxy
-    spx: ['SPY'],
-    ndx: ['QQQ'],
-    dow: ['DIA'],
+  const symbolMap = {
+    vix: 'VIXY',
+    brent: 'BNO',
+    dxy: 'DXY',
+    dxyAlt: 'UUP', // fallback if DXY is unavailable on the plan
+    hsi: 'EWH',
+    nikkei: 'EWJ',
+    asx: 'EWA',
+    dax: 'EWG',
+    obx: 'ENOR',
+    ftse: 'EWU',
+    spx: 'SPY',
+    ndx: 'QQQ',
+    dow: 'DIA',
   };
 
-  const fetchQuote = async (sym) => {
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${token}`;
-    try {
-      const r = await fetch(url);
-      if (!r.ok) {
-        console.error('Quote failed', sym, r.status);
-        return { ok: false, status: r.status };
-      }
-      const json = await r.json();
-      return { ok: true, data: json };
-    } catch (err) {
-      console.error('Quote error', sym, err);
-      return { ok: false, status: 500 };
-    }
-  };
+  const symbols = Object.values(symbolMap).join(',');
 
-  const firstValid = async (candidates) => {
-    for (const sym of candidates) {
-      const result = await fetchQuote(sym);
-      if (result.ok && result.data && typeof result.data.c === 'number') {
-        return result.data;
-      }
-    }
-    return null;
-  };
+  const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbols)}&apikey=${token}`;
 
   try {
-    const entries = await Promise.all(
-      Object.entries(symbols).map(async ([k, list]) => [k, await firstValid(Array.isArray(list) ? list : [list])])
-    );
-    const m = Object.fromEntries(entries);
-    const pick = (k) => (m[k] && typeof m[k].c === 'number' ? m[k].c : null);
-    const pct = (k) => (m[k] && typeof m[k].dp === 'number' ? m[k].dp : null);
+    const r = await fetch(url);
+    if (!r.ok) {
+      const status = r.status;
+      const text = await r.text();
+      console.error('Twelve Data error', status, text);
+      return res.status(status).json({ error: 'Provider error' });
+    }
+    const json = await r.json();
+
+    // Twelve Data returns an object keyed by symbol when multiple symbols are requested
+    const getPrice = (sym) => {
+      const item = json[sym];
+      if (!item || typeof item.price === 'undefined') return null;
+      const num = Number(item.price);
+      return Number.isFinite(num) ? num : null;
+    };
+
+    const getChangePct = (sym) => {
+      const item = json[sym];
+      if (!item || typeof item.percent_change === 'undefined') return null;
+      const num = Number(item.percent_change);
+      return Number.isFinite(num) ? num : null;
+    };
 
     const data = {
       asOf: new Date().toISOString(),
-      vix: { value: pick('vix') ?? null },
-      brent: { value: pick('brent') ?? null },
-      dxy: { value: pick('dxy') ?? null, change1d: pct('dxy') ?? null },
-      asia: { hangSeng: pct('hsi') ?? null, nikkei: pct('nikkei') ?? null, asx: pct('asx') ?? null },
-      europe: { dax: pct('dax') ?? null, obx: pct('obx') ?? null, ftse: pct('ftse') ?? null },
-      usa: { spx: pct('spx') ?? null, ndx: pct('ndx') ?? null, dow: pct('dow') ?? null },
+      vix: { value: getPrice(symbolMap.vix) },
+      brent: { value: getPrice(symbolMap.brent) },
+      dxy: {
+        value: getPrice(symbolMap.dxy) ?? getPrice(symbolMap.dxyAlt),
+        change1d: getChangePct(symbolMap.dxy) ?? getChangePct(symbolMap.dxyAlt),
+      },
+      asia: {
+        hangSeng: getChangePct(symbolMap.hsi),
+        nikkei: getChangePct(symbolMap.nikkei),
+        asx: getChangePct(symbolMap.asx),
+      },
+      europe: {
+        dax: getChangePct(symbolMap.dax),
+        obx: getChangePct(symbolMap.obx),
+        ftse: getChangePct(symbolMap.ftse),
+      },
+      usa: {
+        spx: getChangePct(symbolMap.spx),
+        ndx: getChangePct(symbolMap.ndx),
+        dow: getChangePct(symbolMap.dow),
+      },
     };
 
     const availablePrices = ['vix', 'brent', 'dxy'].filter((k) => data[k].value !== null).length;
