@@ -5,18 +5,9 @@ export default async function handler(req, res) {
   }
 
   const symbolMap = {
-    vix: ['VIXY', 'VXX'],
-    brent: ['BNO', 'USO'],
-    dxy: ['DXY', 'UUP'],
-    hsi: ['EWH'],
-    nikkei: ['EWJ'],
-    asx: ['EWA'],
-    dax: ['EWG'],
-    obx: ['ENOR'],
-    ftse: ['EWU'],
-    spx: ['SPY'],
-    ndx: ['QQQ'],
-    dow: ['DIA'],
+    vix: ['VIXM', 'VIX', 'VIXY', 'VXX'],
+    brent: ['CO1', 'CO1:COM', 'BZ=F', 'BNO', 'USO'],
+    dxy: ['USD/JPY', 'USDJPY', 'JPY=X'],
   };
 
   const symbolsFlat = Array.from(
@@ -48,7 +39,8 @@ export default async function handler(req, res) {
     for (const sym of list) {
       const item = json[sym];
       if (!item) continue;
-      const price = Number(item.price);
+      const priceCandidates = [item.price, item.last, item.close];
+      const price = priceCandidates.map((v) => Number(v)).find((v) => Number.isFinite(v) && v > 0);
       const pct = Number(item.percent_change);
       const priceVal = Number.isFinite(price) ? price : null;
       const pctVal = Number.isFinite(pct) ? pct : null;
@@ -64,36 +56,12 @@ export default async function handler(req, res) {
     const vixQ = pickFirst(json, symbolMap.vix);
     const brentQ = pickFirst(json, symbolMap.brent);
     const dxyQ = pickFirst(json, symbolMap.dxy);
-    const hsiQ = pickFirst(json, symbolMap.hsi);
-    const nikkeiQ = pickFirst(json, symbolMap.nikkei);
-    const asxQ = pickFirst(json, symbolMap.asx);
-    const daxQ = pickFirst(json, symbolMap.dax);
-    const obxQ = pickFirst(json, symbolMap.obx);
-    const ftseQ = pickFirst(json, symbolMap.ftse);
-    const spxQ = pickFirst(json, symbolMap.spx);
-    const ndxQ = pickFirst(json, symbolMap.ndx);
-    const dowQ = pickFirst(json, symbolMap.dow);
 
     const data = {
       asOf: new Date().toISOString(),
       vix: { value: vixQ?.price ?? null },
       brent: { value: brentQ?.price ?? null },
       dxy: { value: dxyQ?.price ?? null, change1d: dxyQ?.pct ?? null },
-      asia: {
-        hangSeng: hsiQ?.pct ?? null,
-        nikkei: nikkeiQ?.pct ?? null,
-        asx: asxQ?.pct ?? null,
-      },
-      europe: {
-        dax: daxQ?.pct ?? null,
-        obx: obxQ?.pct ?? null,
-        ftse: ftseQ?.pct ?? null,
-      },
-      usa: {
-        spx: spxQ?.pct ?? null,
-        ndx: ndxQ?.pct ?? null,
-        dow: dowQ?.pct ?? null,
-      },
     };
 
     res.setHeader('Cache-Control', 'no-store');
