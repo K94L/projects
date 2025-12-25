@@ -98,7 +98,7 @@
       const activeFxTemplates = [
         {
           id: 'dxy',
-          title: 'USD/JPY spikes',
+          title: 'USD/JPY spot',
           eval: (d) => {
             const price = Number(d?.dxy?.value);
             const pct = Number(d?.dxy?.change1d);
@@ -116,9 +116,7 @@
             return {
               level,
               value: Number.isFinite(price) ? `${price.toFixed(2)}` : 'N/A',
-              detail: Number.isFinite(pct)
-                ? `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% vs USD today`
-                : 'No change data',
+              detail: Number.isFinite(price) ? `Spot ${price.toFixed(2)}` : 'No data',
             };
           },
         },
