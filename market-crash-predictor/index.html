@@ -68,8 +68,6 @@
 
       const SAMPLE_PAYLOAD = {
         asOf: '2025-12-03T09:00:00Z',
-        vix: { value: 22.4 },
-        brent: { value: 59.3 },
         dxy: { value: 146.2, change1d: 0.35 },
       };
 
@@ -95,63 +93,7 @@
         el.textContent = sec === 1 ? 'Next refresh in 1s' : `Next refresh in ${sec}s`;
       };
 
-      const activeSignalTemplates = [
-        {
-          id: 'vix',
-          title: 'VIX > 27 (panic) → 30–35 = capitulation',
-          eval: (d) => {
-            const raw = Number(d?.vix?.value);
-            const value = Number.isFinite(raw) && raw > 0 ? raw : null;
-            const level = Number.isFinite(value)
-              ? value >= 30
-                ? 'red'
-                : value >= 27
-                  ? 'orange'
-                  : value >= 20
-                    ? 'yellow'
-                    : 'green'
-              : 'green';
-            return {
-              level,
-              value: Number.isFinite(value) ? `${value.toFixed(1)}` : 'N/A',
-              detail: Number.isFinite(value)
-                ? value >= 30
-                  ? 'Capitulation zone'
-                  : value >= 27
-                    ? 'Panic band'
-                    : 'Calm'
-                : 'No data',
-            };
-          },
-        },
-        {
-          id: 'brent',
-          title: 'Brent < 60 USD (58 = next stop)',
-          eval: (d) => {
-            const value = Number(d?.brent?.value);
-            const level = Number.isFinite(value)
-              ? value < 58
-                ? 'red'
-                : value < 60
-                  ? 'orange'
-                  : value < 65
-                    ? 'yellow'
-                    : 'green'
-              : 'green';
-            return {
-              level,
-              value: Number.isFinite(value) ? `${value.toFixed(2)} USD` : 'N/A',
-              detail: Number.isFinite(value)
-                ? value < 58
-                  ? 'Under 58: capitulation risk'
-                  : value < 60
-                    ? 'Breaking 60: yellow'
-                    : 'Above 60: green'
-                : 'No data',
-            };
-          },
-        },
-      ];
+      const activeSignalTemplates = [];
 
       const activeFxTemplates = [
         {
@@ -252,82 +194,65 @@
         updateDial(liveResults);
       };
 
-      const CLIENT_SYMBOLS = {
-        vix: ['VIXM', 'VIX', 'VIXY', 'VXX'],
-        brent: ['CO1', 'CO1:COM', 'BZ=F', 'BNO', 'USO'],
-        dxy: ['USD/JPY', 'USDJPY', 'JPY=X'],
-      };
+      const TWELVE_SYMBOL = 'USD/JPY';
 
       const fetchMarketDataClient = async () => {
         if (!LOCAL_TOKEN || LOCAL_TOKEN === 'YOUR_TWELVE_DATA_KEY') {
-          throw new Error('No local token');
+          throw new Error('No Twelve Data key');
         }
-        const symbolList = Array.from(new Set(Object.values(CLIENT_SYMBOLS).flat())).join(',');
-        const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbolList)}&apikey=${LOCAL_TOKEN}`;
+        const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(TWELVE_SYMBOL)}&apikey=${LOCAL_TOKEN}`;
         const res = await fetch(url, { cache: 'no-store' });
         if (!res.ok) {
           const text = await res.text();
-          console.warn('Local Twelve Data fetch failed', res.status, text);
-          throw new Error('Local fetch failed');
+          console.warn('Twelve Data fetch failed', res.status, text);
+          throw new Error(`Twelve Data fetch failed (${res.status})`);
         }
         const json = await res.json();
-
-        const getPrice = (sym) => {
-          const item = json[sym];
-          if (!item) return null;
-          const candidates = [item.price, item.last, item.close];
-          for (const c of candidates) {
-            const num = Number(c);
-            if (Number.isFinite(num) && num > 0) return num;
-          }
-          return null;
-        };
-
-        const getPct = (sym) => {
-          const item = json[sym];
-          if (!item || typeof item.percent_change === 'undefined') return null;
-          const num = Number(item.percent_change);
-          return Number.isFinite(num) ? num : null;
-        };
-
-        const pickPrice = (arr) => {
-          for (const sym of arr) {
-            const v = getPrice(sym);
-            if (v !== null) return v;
-          }
-          return null;
-        };
-
-        const pickPct = (arr) => {
-          for (const sym of arr) {
-            const v = getPct(sym);
-            if (v !== null) return v;
-          }
-          return null;
-        };
-
+        if (json && json.status === 'error') {
+          throw new Error(json.message || 'Twelve Data error');
+        }
+        const price = json && typeof json.price !== 'undefined' ? Number(json.price) : Number(json.close);
+        const pct = json ? Number(json.percent_change ?? json.change_percentage ?? json.change) : null;
+        if (!Number.isFinite(price)) {
+          console.warn('Unexpected Twelve Data payload', json);
+          throw new Error('Twelve Data response missing data');
+        }
         return {
           asOf: new Date().toISOString(),
-          vix: { value: pickPrice(CLIENT_SYMBOLS.vix) },
-          brent: { value: pickPrice(CLIENT_SYMBOLS.brent) },
-          dxy: { value: pickPrice(CLIENT_SYMBOLS.dxy), change1d: pickPct(CLIENT_SYMBOLS.dxy) },
+          dxy: { value: price, change1d: Number.isFinite(pct) ? pct : null },
         };
       };
 
       const fetchSignals = async () => {
-        const useLocalFirst = IS_STATIC && LOCAL_TOKEN && !LOCAL_TOKEN.includes('YOUR');
-        if (useLocalFirst) {
+        const canUseLocal = IS_STATIC && LOCAL_TOKEN && !LOCAL_TOKEN.includes('YOUR');
+        const hasApiRoute = !IS_STATIC;
+
+        if (canUseLocal) {
           try {
             const data = await fetchMarketDataClient();
             renderSignals(data);
-            renderStatusPill('live', 'Updated (local token)');
+            renderStatusPill('live', 'Updated (local Twelve Data)');
             setUpdated(`Updated ${new Date().toLocaleTimeString()}`);
+            nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
+            setNextRefresh();
+            return;
           } catch (errLocal) {
-            console.warn('Local token fetch failed', errLocal);
-            renderSignals(SAMPLE_PAYLOAD);
-            renderStatusPill('error', 'Local fetch failed, showing sample data');
-            setUpdated('Sample data (local fetch failed)');
+            const msg = errLocal && errLocal.message ? errLocal.message : 'Local fetch failed';
+            console.warn('Local Twelve Data fetch failed', errLocal);
+            renderStatusPill('error', msg);
+            setUpdated(msg);
+            // fall through to API/sample only if we have an API route
+            if (!hasApiRoute) {
+              renderSignals(SAMPLE_PAYLOAD);
+              nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
+              setNextRefresh();
+              return;
+            }
           }
+        } else if (!hasApiRoute) {
+          setUpdated('No Twelve Data key detected; showing sample data');
+          renderSignals(SAMPLE_PAYLOAD);
+          renderStatusPill('error', 'Sample data (no key)');
           nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
           setNextRefresh();
           return;
@@ -337,9 +262,6 @@
           const res = await fetch(ENDPOINT, { cache: 'no-store' });
           if (!res.ok) {
             if (res.status === 429) throw new Error('Rate limited');
-            if (res.status === 404 && LOCAL_TOKEN && !LOCAL_TOKEN.includes('YOUR')) {
-              throw new Error('No API route, use local token');
-            }
             throw new Error('Bad response');
           }
           const data = await res.json();
@@ -347,32 +269,17 @@
           renderStatusPill('live', 'Updated');
           setUpdated(`Updated ${new Date().toLocaleTimeString()}`);
         } catch (err) {
-          console.warn('API fetch failed, trying local token or sample', err);
-          if (LOCAL_TOKEN && !LOCAL_TOKEN.includes('YOUR')) {
-            try {
-              const data = await fetchMarketDataClient();
-              renderSignals(data);
-              renderStatusPill('live', 'Updated (local token)');
-              setUpdated(`Updated ${new Date().toLocaleTimeString()}`);
-            } catch (errLocal) {
-              console.warn('Local token fetch failed', errLocal);
-              renderSignals(SAMPLE_PAYLOAD);
-              const msg = err && err.message === 'Rate limited' ? 'Rate limited, showing sample data' : 'Showing sample data';
-              renderStatusPill('error', msg);
-              setUpdated(msg);
-            }
-          } else {
-            renderSignals(SAMPLE_PAYLOAD);
-            const msg = err && err.message === 'Rate limited' ? 'Rate limited, showing sample data' : 'Showing sample data';
-            renderStatusPill('error', msg);
-            setUpdated(msg);
-          }
+          console.warn('API fetch failed, showing sample data', err);
+          renderSignals(SAMPLE_PAYLOAD);
+          const msg = err && err.message === 'Rate limited' ? 'Rate limited, showing sample data' : 'Showing sample data';
+          renderStatusPill('error', msg);
+          setUpdated(msg);
         }
         nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
         setNextRefresh();
       };
 
-      setUpdated('Loading VIX...');
+      setUpdated(IS_STATIC && LOCAL_TOKEN && !LOCAL_TOKEN.includes('YOUR') ? 'Loading from Twelve Data...' : 'Waiting for data...');
       fetchSignals();
       setInterval(fetchSignals, POLL_INTERVAL_MS);
       setInterval(setNextRefresh, 1000);
