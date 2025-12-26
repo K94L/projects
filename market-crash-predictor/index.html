@@ -350,6 +350,27 @@
         const canUseLocal = LOCAL_TOKEN && !LOCAL_TOKEN.includes('YOUR');
         const hasApiRoute = !IS_STATIC; // allow API fetch on localhost as well
 
+        // Prefer API (includes FRED Brent); fallback to local if API unavailable
+        if (hasApiRoute) {
+          try {
+            const res = await fetch(ENDPOINT, { cache: 'no-store' });
+            if (!res.ok) {
+              if (res.status === 429) throw new Error('Rate limited');
+              throw new Error('Bad response');
+            }
+            const data = await res.json();
+            renderSignals(data);
+            renderStatusPill('live', 'Updated');
+            setUpdated(`Updated ${new Date().toLocaleTimeString()}`);
+            nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
+            setNextRefresh();
+            return;
+          } catch (err) {
+            console.warn('API fetch failed', err);
+            // fall through to local if possible
+          }
+        }
+
         if (canUseLocal) {
           try {
             const data = await fetchMarketDataClient();
@@ -361,41 +382,13 @@
             return;
           } catch (errLocal) {
             console.warn('Local Twelve Data fetch failed', errLocal);
-            renderStatusPill('error', 'Using zeros');
-            setUpdated('Using zeros');
-            // fall through to API/sample only if we have an API route
-            if (!hasApiRoute) {
-              renderSignals(ZERO_PAYLOAD);
-              nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
-              setNextRefresh();
-              return;
-            }
           }
-        } else if (!hasApiRoute) {
-          setUpdated('No API route; using zeros');
-          renderSignals(ZERO_PAYLOAD);
-          renderStatusPill('error', 'Using zeros');
-          nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
-          setNextRefresh();
-          return;
         }
 
-        try {
-          const res = await fetch(ENDPOINT, { cache: 'no-store' });
-          if (!res.ok) {
-            if (res.status === 429) throw new Error('Rate limited');
-            throw new Error('Bad response');
-          }
-          const data = await res.json();
-          renderSignals(data);
-          renderStatusPill('live', 'Updated');
-          setUpdated(`Updated ${new Date().toLocaleTimeString()}`);
-        } catch (err) {
-          console.warn('API fetch failed, showing sample data', err);
-          renderSignals(ZERO_PAYLOAD);
-          renderStatusPill('error', 'Using zeros');
-          setUpdated('Using zeros');
-        }
+        // Final fallback: zeros
+        renderSignals(ZERO_PAYLOAD);
+        renderStatusPill('error', 'Using zeros');
+        setUpdated('Using zeros');
         nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
         setNextRefresh();
       };
