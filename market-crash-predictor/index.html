@@ -414,26 +414,6 @@
       };
 
       const fetchSignals = async () => fetchSignalsInner();
-          try {
-            const data = await fetchMarketDataClient();
-            renderSignals(data);
-            renderStatusPill('live', 'Updated (local Twelve Data)');
-            setUpdated(`Updated ${new Date().toLocaleTimeString()}`);
-            nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
-            setNextRefresh();
-            return;
-          } catch (errLocal) {
-            console.warn('Local Twelve Data fetch failed', errLocal);
-          }
-        }
-
-        // Final fallback: zeros
-        renderSignals(ZERO_PAYLOAD);
-        renderStatusPill('error', 'Not able to fetch data');
-        setUpdated('Not able to fetch data');
-        nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
-        setNextRefresh();
-      };
 
       setUpdated(IS_STATIC && LOCAL_TOKEN && !LOCAL_TOKEN.includes('YOUR') ? 'Loading from Twelve Data...' : 'Waiting for data...');
       fetchSignals();
