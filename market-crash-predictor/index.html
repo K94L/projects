@@ -60,15 +60,19 @@
       </main>
     </div>
     <script>
-      const POLL_INTERVAL_MS = 60000;
+      const POLL_INTERVAL_MS = 300000; // 5 minutes to reduce API usage
       const ENDPOINT = '/api/market-signals';
       const LOCAL_TOKEN = typeof window !== 'undefined' ? window.TWELVE_DATA_KEY : null;
-      const IS_STATIC = typeof window !== 'undefined' && (window.location.protocol === 'file:' || window.location.port === '8000');
+      // Treat only file:// as static so localhost can use local fetch and/or API route
+      const IS_STATIC = typeof window !== 'undefined' && window.location.protocol === 'file:';
       let nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
 
-      const SAMPLE_PAYLOAD = {
-        asOf: '2025-12-03T09:00:00Z',
-        dxy: { value: 146.2, change1d: 0.35 },
+      const ZERO_PAYLOAD = {
+        asOf: new Date().toISOString(),
+        vix: { value: 0 },
+        dxy: { value: 0 },
+        usdjpy: { value: 0 },
+        brent: { value: 0 },
       };
 
       const renderStatusPill = (state, text) => {
@@ -93,30 +97,120 @@
         el.textContent = sec === 1 ? 'Next refresh in 1s' : `Next refresh in ${sec}s`;
       };
 
-      const activeSignalTemplates = [];
+      const activeSignalTemplates = [
+        {
+          id: 'vix',
+          title: 'VIX (VIXM)',
+          eval: (d) => {
+            const raw = Number(d?.vix?.value);
+            const value = Number.isFinite(raw) && raw > 0 ? raw : null;
+            const level = Number.isFinite(value)
+              ? value >= 30
+                ? 'red'
+                : value >= 27
+                  ? 'orange'
+                  : value >= 20
+                    ? 'yellow'
+                    : 'green'
+              : 'green';
+            return {
+              level,
+              value: Number.isFinite(value) ? `${value.toFixed(2)}` : 'N/A',
+              detail: Number.isFinite(value)
+                ? value >= 30
+                  ? 'Watch out: capitulation risk'
+                  : value >= 27
+                    ? 'Watch out: panic band'
+                    : value >= 20
+                      ? 'Watch out: nerves rising'
+                      : 'Calm: vol contained'
+                : 'No data',
+            };
+          },
+        },
+        {
+          id: 'brent',
+          title: 'Brent (FRED DCOILBRENTEU)',
+          eval: (d) => {
+            const value = Number(d?.brent?.value);
+            const level = Number.isFinite(value)
+              ? value <= 55
+                ? 'red'
+                : value <= 58
+                  ? 'orange'
+                  : value <= 60
+                    ? 'yellow'
+                    : 'green'
+              : 'green';
+            return {
+              level,
+              value: Number.isFinite(value) ? `${value.toFixed(2)} USD` : 'N/A',
+              detail: Number.isFinite(value)
+                ? level === 'red'
+                  ? 'Watch out: capitulation risk'
+                  : level === 'orange'
+                    ? 'Watch out: demand falling fast'
+                    : level === 'yellow'
+                      ? 'Watch out: slipping into yellow'
+                      : 'Calm: above 60'
+                : 'No data',
+            };
+          },
+        },
+      ];
 
       const activeFxTemplates = [
         {
           id: 'dxy',
-          title: 'USD/JPY spot',
+          title: 'DXY (synthetic)',
           eval: (d) => {
             const price = Number(d?.dxy?.value);
-            const pct = Number(d?.dxy?.change1d);
-            const level = Number.isFinite(pct)
-              ? pct >= 0.8
+            const level = Number.isFinite(price)
+              ? price >= 107
                 ? 'red'
-                : pct >= 0.5
+                : price >= 105
                   ? 'orange'
-                  : pct >= 0.2
+                  : price >= 103
                     ? 'yellow'
                     : 'green'
-              : Number.isFinite(price) && price >= 150
-                ? 'orange'
-                : 'green';
+              : 'green';
             return {
               level,
               value: Number.isFinite(price) ? `${price.toFixed(2)}` : 'N/A',
-              detail: Number.isFinite(price) ? `Spot ${price.toFixed(2)}` : 'No data',
+              detail: Number.isFinite(price)
+                ? level === 'red'
+                  ? 'Watch out: USD surge'
+                  : level === 'orange'
+                    ? 'Watch out: strong USD'
+                    : level === 'yellow'
+                      ? 'Watch out: USD firming'
+                      : 'Calm: balanced'
+                : 'No data',
+            };
+          },
+        },
+        {
+          id: 'usdjpy',
+          title: 'USD/JPY (USD/JPY)',
+          eval: (d) => {
+            const price = Number(d?.usdjpy?.value);
+            const level = Number.isFinite(price)
+              ? price >= 150
+                ? 'orange'
+                : price >= 148
+                  ? 'yellow'
+                  : 'green'
+              : 'green';
+            return {
+              level,
+              value: Number.isFinite(price) ? `${price.toFixed(2)}` : 'N/A',
+              detail: Number.isFinite(price)
+                ? level === 'orange'
+                  ? 'Watch out: sharp spike'
+                  : level === 'yellow'
+                    ? 'Watch out: rising stress'
+                    : 'Calm: orderly'
+                : 'No data',
             };
           },
         },
@@ -181,7 +275,6 @@
             </div>
             <div class="signal-meta">
               <div class="signal-value">${res.value}</div>
-              <div class="signal-detail">${res.detail}</div>
             </div>
           `;
           container.appendChild(card);
@@ -192,38 +285,70 @@
         updateDial(liveResults);
       };
 
-      const TWELVE_SYMBOL = 'USD/JPY';
+      // Keep symbol list minimal to reduce credits
+      const VIX_SYMBOL = 'VIXM';
+      const USDJPY_SYMBOL = 'USD/JPY';
+      const DXY_WEIGHTS = [
+        { symbol: 'EUR/USD', weight: -0.576 },
+        { symbol: 'USD/JPY', weight: 0.136 },
+        { symbol: 'GBP/USD', weight: -0.119 },
+        { symbol: 'USD/CAD', weight: 0.091 },
+        { symbol: 'USD/SEK', weight: 0.042 },
+        { symbol: 'USD/CHF', weight: 0.036 },
+      ];
 
       const fetchMarketDataClient = async () => {
         if (!LOCAL_TOKEN || LOCAL_TOKEN === 'YOUR_TWELVE_DATA_KEY') {
           throw new Error('No Twelve Data key');
         }
-        const url = `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(TWELVE_SYMBOL)}&apikey=${LOCAL_TOKEN}`;
-        const res = await fetch(url, { cache: 'no-store' });
-        if (!res.ok) {
-          const text = await res.text();
-          console.warn('Twelve Data fetch failed', res.status, text);
-          throw new Error(`Twelve Data fetch failed (${res.status})`);
-        }
-        const json = await res.json();
-        if (json && json.status === 'error') {
-          throw new Error(json.message || 'Twelve Data error');
-        }
-        const price = json && typeof json.price !== 'undefined' ? Number(json.price) : Number(json.close);
-        const pct = json ? Number(json.percent_change ?? json.change_percentage ?? json.change) : null;
-        if (!Number.isFinite(price)) {
-          console.warn('Unexpected Twelve Data payload', json);
-          throw new Error('Twelve Data response missing data');
-        }
+        const fetchPrice = async (symbol) => {
+          const url = `https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&apikey=${LOCAL_TOKEN}`;
+          const res = await fetch(url, { cache: 'no-store' });
+          if (!res.ok) {
+            const text = await res.text();
+            console.warn('Twelve Data price fetch failed', symbol, res.status, text);
+            throw new Error(`Twelve Data price failed for ${symbol} (${res.status})`);
+          }
+          const json = await res.json();
+          if (json && json.status === 'error') {
+            throw new Error(json.message || `Twelve Data error for ${symbol}`);
+          }
+          const price = Number(json.price);
+          if (!Number.isFinite(price)) {
+            throw new Error(`No price for ${symbol}`);
+          }
+          return price;
+        };
+
+        const pairSymbols = Array.from(new Set([...DXY_WEIGHTS.map((p) => p.symbol), USDJPY_SYMBOL]));
+        const pricePromises = pairSymbols.map((sym) => fetchPrice(sym));
+        const [vixPrice, ...pairPrices] = await Promise.all([fetchPrice(VIX_SYMBOL), ...pricePromises]);
+
+        const priceMap = {};
+        pairSymbols.forEach((sym, idx) => {
+          priceMap[sym] = pairPrices[idx];
+        });
+
+        const dxyValue = DXY_WEIGHTS.reduce((acc, { symbol, weight }) => {
+          const px = Number(priceMap[symbol]);
+          if (!Number.isFinite(px) || px <= 0) return acc;
+          return acc * Math.pow(px, weight);
+        }, 50.14348112);
+
+        const usdJpyPrice = priceMap[USDJPY_SYMBOL];
+
         return {
           asOf: new Date().toISOString(),
-          dxy: { value: price, change1d: Number.isFinite(pct) ? pct : null },
+          dxy: { value: Number.isFinite(dxyValue) ? dxyValue : null, change1d: null },
+          vix: { value: vixPrice },
+          usdjpy: { value: usdJpyPrice },
+          brent: { value: 0 }, // Brent handled via server (FRED) only
         };
       };
 
       const fetchSignals = async () => {
-        const canUseLocal = IS_STATIC && LOCAL_TOKEN && !LOCAL_TOKEN.includes('YOUR');
-        const hasApiRoute = !IS_STATIC;
+        const canUseLocal = LOCAL_TOKEN && !LOCAL_TOKEN.includes('YOUR');
+        const hasApiRoute = !IS_STATIC; // allow API fetch on localhost as well
 
         if (canUseLocal) {
           try {
@@ -235,22 +360,21 @@
             setNextRefresh();
             return;
           } catch (errLocal) {
-            const msg = errLocal && errLocal.message ? errLocal.message : 'Local fetch failed';
             console.warn('Local Twelve Data fetch failed', errLocal);
-            renderStatusPill('error', msg);
-            setUpdated(msg);
+            renderStatusPill('error', 'Using zeros');
+            setUpdated('Using zeros');
             // fall through to API/sample only if we have an API route
             if (!hasApiRoute) {
-              renderSignals(SAMPLE_PAYLOAD);
+              renderSignals(ZERO_PAYLOAD);
               nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
               setNextRefresh();
               return;
             }
           }
         } else if (!hasApiRoute) {
-          setUpdated('No Twelve Data key detected; showing sample data');
-          renderSignals(SAMPLE_PAYLOAD);
-          renderStatusPill('error', 'Sample data (no key)');
+          setUpdated('No API route; using zeros');
+          renderSignals(ZERO_PAYLOAD);
+          renderStatusPill('error', 'Using zeros');
           nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
           setNextRefresh();
           return;
@@ -268,10 +392,9 @@
           setUpdated(`Updated ${new Date().toLocaleTimeString()}`);
         } catch (err) {
           console.warn('API fetch failed, showing sample data', err);
-          renderSignals(SAMPLE_PAYLOAD);
-          const msg = err && err.message === 'Rate limited' ? 'Rate limited, showing sample data' : 'Showing sample data';
-          renderStatusPill('error', msg);
-          setUpdated(msg);
+          renderSignals(ZERO_PAYLOAD);
+          renderStatusPill('error', 'Using zeros');
+          setUpdated('Using zeros');
         }
         nextRefreshAt = Date.now() + POLL_INTERVAL_MS;
         setNextRefresh();
